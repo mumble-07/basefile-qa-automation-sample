@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 import tkinter as tk
 import threading
 from tkinter import messagebox
@@ -19,6 +20,7 @@ def open_url_with_selenium(url):
         print(f"[DEBUG] ChromeDriver path: {chromedriver_path}")
 
         chrome_options = Options()
+        chrome_options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--remote-debugging-port=9222")
@@ -43,59 +45,101 @@ def open_url_with_selenium(url):
         log_path = os.path.join(current_dir, 'qa_check_results.txt')
         print(f"[INFO] Log file path: {log_path}")
 
-        with open(log_path, 'w') as log_file:
+        with open(log_path, 'w', encoding='utf-8') as log_file:
             for i, row in enumerate(rows):
                 try:
                     cells = row.find_elements(By.TAG_NAME, 'td')
-                    if len(cells) < 13:
+                    if len(cells) < 18:
                         continue
 
                     creative_name = cells[1].text.strip()
                     creative_id = cells[2].text.strip()
                     status = cells[3].text.strip().upper()
-                    creative_type = cells[8].text.strip().lower()
-                    placement_size = cells[9].text.strip().lower().replace(' ', '')
+                    creative_type = cells[8].text.strip()
+                    placement_size_raw = cells[9].text.strip()
+                    placement_size = placement_size_raw.lower().replace(' ', '')
                     base_file_size_text = cells[12].text.strip().upper()
+                    file_name = cells[17].text.strip()
 
-                    # Convert base file size to float KB
                     try:
                         size_value = float(base_file_size_text.replace("KB", "").strip())
                     except:
                         size_value = 0
 
-                    print(f"[DEBUG] ID: {creative_id}, Status: {status}, Type: {creative_type}, Placement: {placement_size}, Name: {creative_name}, Size: {size_value}KB")
+                    log_msgs = []
+
+                    if placement_size == "1x1":
+                        log_msgs.append("✅ AUTO-APPROVED: 1x1 placement detected, skipping other checks")
+                        result = f"ID: {creative_id} - " + ", ".join(log_msgs)
+                        log_file.write(result + '\n')
+                        continue
 
                     if status == 'QA':
-                        log_msgs = []
-
-                        # Test Case 1: Placement Size in Name
                         if placement_size in creative_name.replace(' ', '').lower():
                             log_msgs.append("✅ Placement size present")
                         else:
                             log_msgs.append(f"❌ Missing placement '{placement_size}'")
 
-                        # Test Case 2: Valid Extension
                         if any(creative_name.lower().endswith(ext) for ext in all_extensions):
                             log_msgs.append("✅ File extension valid")
                         else:
                             log_msgs.append("❌ Missing or invalid file extension")
 
-                        # Test Case 3: Type Check for image-based formats
                         if any(creative_name.lower().endswith(ext) for ext in image_extensions):
-                            if creative_type == "altimage":
+                            if creative_type.lower() == "altimage":
                                 log_msgs.append("✅ Type is altimage for image format")
                             else:
                                 log_msgs.append("❌ Type mismatch: should be 'altimage'")
 
-                        # Test Case 4: Base File Size Limit
                         if size_value > 600:
                             log_msgs.append(f"❌ Base file size exceeds 600 KB ({size_value} KB)")
                         else:
                             log_msgs.append("✅ File size within limit")
 
-                        result = f"ID: {creative_id} - " + ", ".join(log_msgs)
-                        print("[LOG]", result)
-                        log_file.write(result + '\n')
+                        if creative_name.lower().endswith(".zip"):
+                            if creative_type in ["HTML_Standard", "HTML_onpage"]:
+                                log_msgs.append("✅ Correct type for .zip file")
+                            else:
+                                log_msgs.append("❌ .zip file must be HTML_Standard or HTML_onpage")
+
+                        if creative_name == file_name:
+                            log_msgs.append("✅ Creative name matches file name")
+                        else:
+                            log_msgs.append("❌ Creative name does not match file name")
+
+                        try:
+                            anchor = cells[1].find_element(By.TAG_NAME, 'a')
+                            href = anchor.get_attribute("href")
+                            creative_domain = urllib.parse.urlparse(href).netloc
+                            driver.execute_script("window.open(arguments[0]);", href)
+                            driver.switch_to.window(driver.window_handles[-1])
+                            time.sleep(3)
+
+                            if "clicktag" in driver.page_source.lower():
+                                log_msgs.append("✅ ClickTag found in preview")
+                            else:
+                                log_msgs.append("❌ ClickTag not detected")
+
+                            logs = driver.get_log("browser")
+                            filtered_errors = [
+                                entry for entry in logs
+                                if entry['level'] == 'SEVERE' and creative_domain in entry['message']
+                            ]
+                            if filtered_errors:
+                                log_msgs.append("❌ Console error detected (from creative)")
+                                for entry in filtered_errors:
+                                    msg = entry['message'].replace('\n', ' ').replace('\r', '')
+                                    log_file.write(f"[Console:{creative_id}] {entry['level']}: {msg}\n")
+                            else:
+                                log_msgs.append("✅ No console errors")
+
+                            driver.close()
+                            driver.switch_to.window(driver.window_handles[0])
+                        except Exception as preview_e:
+                            log_msgs.append("⚠️ ClickTag/Console check failed")
+
+                    result = f"ID: {creative_id} - " + ", ".join(log_msgs)
+                    log_file.write(result + '\n')
 
                 except Exception as inner_e:
                     print("[WARN] Row error:", inner_e)
@@ -104,13 +148,11 @@ def open_url_with_selenium(url):
 
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open URL: {e}")
-        print(f"[ERROR] {e}")
 
 def start_qa_check():
     url = url_entry.get().strip()
     if not url.startswith("http"):
         url = "https://" + url
-    print(f"[DEBUG] Final URL: {url}")
     threading.Thread(target=open_url_with_selenium, args=(url,)).start()
 
 # GUI
