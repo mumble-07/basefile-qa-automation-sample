@@ -10,14 +10,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
+from datetime import datetime
 
 def open_url_with_selenium(url):
     try:
-        print("[DEBUG] Starting open_url_with_selenium")
-
         current_dir = os.path.dirname(os.path.abspath(__file__))
+        results_dir = os.path.join(current_dir, 'results_log')
+        os.makedirs(results_dir, exist_ok=True)
+
         chromedriver_path = os.path.abspath(os.path.join(current_dir, '..', 'chromedriver-mac-arm64', 'chromedriver'))
-        print(f"[DEBUG] ChromeDriver path: {chromedriver_path}")
 
         chrome_options = Options()
         chrome_options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
@@ -30,7 +31,6 @@ def open_url_with_selenium(url):
         service = Service(executable_path=chromedriver_path)
         driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.get(url)
-        print("[DEBUG] Chrome launched, loading URL...")
 
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table.creatives-table"))
@@ -38,12 +38,13 @@ def open_url_with_selenium(url):
         time.sleep(2)
 
         rows = driver.find_elements(By.CSS_SELECTOR, "table.creatives-table tbody tr")
-        print(f"[DEBUG] Found {len(rows)} creative rows")
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        log_path = os.path.join(results_dir, f'qa_check_results_{timestamp}.txt')
 
         image_extensions = ['.jpg', '.jpeg', '.png', '.gif']
         all_extensions = image_extensions + ['.zip', '.svg', '.mp4', '.webm']
-        log_path = os.path.join(current_dir, 'qa_check_results.txt')
-        print(f"[INFO] Log file path: {log_path}")
+
+        summary_errors = {}
 
         with open(log_path, 'w', encoding='utf-8') as log_file:
             for i, row in enumerate(rows):
@@ -67,10 +68,12 @@ def open_url_with_selenium(url):
                         size_value = 0
 
                     log_msgs = []
+                    errors = []
 
                     if placement_size == "1x1":
-                        log_msgs.append("✅ AUTO-APPROVED: 1x1 placement detected, skipping other checks")
-                        result = f"ID: {creative_id} - " + ", ".join(log_msgs)
+                        msg = "✅ AUTO-APPROVED: 1x1 placement detected, skipping other checks"
+                        log_msgs.append(msg)
+                        result = f"ID: {creative_id} - " + msg
                         log_file.write(result + '\n')
                         continue
 
@@ -78,21 +81,29 @@ def open_url_with_selenium(url):
                         if placement_size in creative_name.replace(' ', '').lower():
                             log_msgs.append("✅ Placement size present")
                         else:
-                            log_msgs.append(f"❌ Missing placement '{placement_size}'")
+                            msg = f"❌ Missing placement '{placement_size}'"
+                            log_msgs.append(msg)
+                            errors.append(msg)
 
                         if any(creative_name.lower().endswith(ext) for ext in all_extensions):
                             log_msgs.append("✅ File extension valid")
                         else:
-                            log_msgs.append("❌ Missing or invalid file extension")
+                            msg = "❌ Missing or invalid file extension"
+                            log_msgs.append(msg)
+                            errors.append(msg)
 
                         if any(creative_name.lower().endswith(ext) for ext in image_extensions):
                             if creative_type.lower() == "altimage":
                                 log_msgs.append("✅ Type is altimage for image format")
                             else:
-                                log_msgs.append("❌ Type mismatch: should be 'altimage'")
+                                msg = "❌ Type mismatch: should be 'altimage'"
+                                log_msgs.append(msg)
+                                errors.append(msg)
 
                         if size_value > 600:
-                            log_msgs.append(f"❌ Base file size exceeds 600 KB ({size_value} KB)")
+                            msg = f"❌ Base file size exceeds 600 KB ({size_value} KB)"
+                            log_msgs.append(msg)
+                            errors.append(msg)
                         else:
                             log_msgs.append("✅ File size within limit")
 
@@ -100,12 +111,16 @@ def open_url_with_selenium(url):
                             if creative_type in ["HTML_Standard", "HTML_onpage"]:
                                 log_msgs.append("✅ Correct type for .zip file")
                             else:
-                                log_msgs.append("❌ .zip file must be HTML_Standard or HTML_onpage")
+                                msg = "❌ .zip file must be HTML_Standard or HTML_onpage"
+                                log_msgs.append(msg)
+                                errors.append(msg)
 
                         if creative_name == file_name:
                             log_msgs.append("✅ Creative name matches file name")
                         else:
-                            log_msgs.append("❌ Creative name does not match file name")
+                            msg = "❌ Creative name does not match file name"
+                            log_msgs.append(msg)
+                            errors.append(msg)
 
                         try:
                             anchor = cells[1].find_element(By.TAG_NAME, 'a')
@@ -118,7 +133,9 @@ def open_url_with_selenium(url):
                             if "clicktag" in driver.page_source.lower():
                                 log_msgs.append("✅ ClickTag found in preview")
                             else:
-                                log_msgs.append("❌ ClickTag not detected")
+                                msg = "❌ ClickTag not detected"
+                                log_msgs.append(msg)
+                                errors.append(msg)
 
                             logs = driver.get_log("browser")
                             filtered_errors = [
@@ -126,48 +143,78 @@ def open_url_with_selenium(url):
                                 if entry['level'] == 'SEVERE' and creative_domain in entry['message']
                             ]
                             if filtered_errors:
-                                log_msgs.append("❌ Console error detected (from creative)")
+                                msg = "❌ Console error detected (from creative)"
+                                log_msgs.append(msg)
+                                errors.append(msg)
                                 for entry in filtered_errors:
-                                    msg = entry['message'].replace('\n', ' ').replace('\r', '')
-                                    log_file.write(f"[Console:{creative_id}] {entry['level']}: {msg}\n")
+                                    clean_msg = entry['message'].replace('\n', ' ').replace('\r', '')
+                                    log_file.write(f"[Console:{creative_id}] {entry['level']}: {clean_msg}\n")
                             else:
                                 log_msgs.append("✅ No console errors")
 
                             driver.close()
                             driver.switch_to.window(driver.window_handles[0])
                         except Exception as preview_e:
-                            log_msgs.append("⚠️ ClickTag/Console check failed")
+                            msg = "⚠️ ClickTag/Console check failed"
+                            log_msgs.append(msg)
+                            errors.append(msg)
+
+                    # ✅ Final UI update: if QA and no errors, convert to Approved visually
+                    if status == "QA" and not errors:
+                        try:
+                            status_cell = cells[3]
+                            driver.execute_script("""
+                                arguments[0].innerHTML = '<span class="approved-pill">Approved</span>';
+                            """, status_cell)
+                            log_msgs.append("✅ All test cases passed – status changed to Approved in UI")
+                        except Exception as dom_e:
+                            log_msgs.append("⚠️ Failed to change status to Approved in DOM")
 
                     result = f"ID: {creative_id} - " + ", ".join(log_msgs)
                     log_file.write(result + '\n')
+                    if errors:
+                        summary_errors[creative_id] = errors
 
                 except Exception as inner_e:
                     print("[WARN] Row error:", inner_e)
 
-        print("[INFO] QA check completed. Results saved.")
+            if summary_errors:
+                log_file.write("\n\n=== SUMMARY OF FAILED CHECKS ===\n")
+                for cid, errs in summary_errors.items():
+                    log_file.write(f"ID: {cid}\n")
+                    for e in errs:
+                        log_file.write(f"  - {e}\n")
+                    log_file.write("\n")
+
+        log_label.config(text=f"✅ QA check completed! Log saved to: {log_path}", fg="green")
 
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open URL: {e}")
+        log_label.config(text="❌ Error during QA check", fg="red")
 
 def start_qa_check():
     url = url_entry.get().strip()
     if not url.startswith("http"):
         url = "https://" + url
+    log_label.config(text="🔄 Running QA check...", fg="blue")
     threading.Thread(target=open_url_with_selenium, args=(url,)).start()
 
-# GUI
+# GUI Setup
 root = tk.Tk()
 root.title("QA Link Checker")
-root.geometry("400x150")
+root.geometry("460x180")
 root.resizable(False, False)
 
-label = tk.Label(root, text="Enter URL for QA Check:")
-label.pack(pady=10)
+label = tk.Label(root, text="Enter URL for QA Check:", font=("Arial", 11))
+label.pack(pady=(10, 0))
 
-url_entry = tk.Entry(root, width=50)
-url_entry.pack()
+url_entry = tk.Entry(root, width=60, font=("Arial", 10))
+url_entry.pack(pady=5)
 
-qa_button = tk.Button(root, text="QA CHECK", command=start_qa_check)
-qa_button.pack(pady=20)
+qa_button = tk.Button(root, text="QA CHECK", command=start_qa_check, font=("Arial", 10, "bold"), bg="#123F72", fg="black", padx=10, pady=2)
+qa_button.pack(pady=10)
+
+log_label = tk.Label(root, text="", font=("Arial", 10))
+log_label.pack(pady=(5, 0))
 
 root.mainloop()
