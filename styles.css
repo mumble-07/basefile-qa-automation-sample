@@ -813,6 +813,7 @@ i.ft-ic {
 .creatives-table th:nth-child(18),
 .creatives-table td:nth-child(18) {
 	width: 110px;
+	max-width: 110px;
 }
 
 /* 19. Last Modified */
@@ -827,7 +828,7 @@ i.ft-ic {
 	color: rgba(0, 0, 0, .5);
 }
 
-.fa-file-image {
+.fa-file-image, .fa-file-code {
 	color: #2d7ebf;
 	padding-right: 5px;
 }
@@ -851,4 +852,16 @@ i.ft-ic {
 	align-items: center;
 	height: 100%;
 	width: 100%;
+}
+
+.creative-name {
+	color: inherit;
+}
+
+.ellipsis-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;     /* or inline-block if used inside span */
+  width: 100%;
 }
