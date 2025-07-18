@@ -1,11 +1,11 @@
-ID: 1738317 - ✅ Placement size present, ✅ File extension valid, ✅ Type is altimage for image format
-ID: 1721918 - ❌ Missing placement '1015x1421', ✅ File extension valid, ✅ Type is altimage for image format
-ID: 8256829 - ✅ Placement size present, ✅ File extension valid, ✅ Type is altimage for image format
-ID: 1263000 - ✅ Placement size present, ✅ File extension valid, ✅ Type is altimage for image format
-ID: 1263001 - ✅ Placement size present, ✅ File extension valid
-ID: 2411301 - ✅ Placement size present, ✅ File extension valid
-ID: 2411302 - ✅ Placement size present, ✅ File extension valid
-ID: 2411303 - ✅ Placement size present, ✅ File extension valid
-ID: 2411304 - ✅ Placement size present, ✅ File extension valid
-ID: 2411101 - ✅ Placement size present, ✅ File extension valid
-ID: 2411102 - ✅ Placement size present, ✅ File extension valid
+ID: 1738317 - ✅ Placement size present, ✅ File extension valid, ✅ Type is altimage for image format, ✅ File size within limit
+ID: 1721918 - ❌ Missing placement '1015x1421', ✅ File extension valid, ✅ Type is altimage for image format, ✅ File size within limit
+ID: 8256829 - ✅ Placement size present, ✅ File extension valid, ✅ Type is altimage for image format, ✅ File size within limit
+ID: 1263000 - ✅ Placement size present, ✅ File extension valid, ✅ Type is altimage for image format, ✅ File size within limit
+ID: 1263001 - ✅ Placement size present, ✅ File extension valid, ❌ Base file size exceeds 600 KB (603.0 KB)
+ID: 2411301 - ✅ Placement size present, ✅ File extension valid, ✅ File size within limit
+ID: 2411302 - ✅ Placement size present, ✅ File extension valid, ✅ File size within limit
+ID: 2411303 - ✅ Placement size present, ✅ File extension valid, ✅ File size within limit
+ID: 2411304 - ✅ Placement size present, ✅ File extension valid, ✅ File size within limit
+ID: 2411101 - ✅ Placement size present, ✅ File extension valid, ✅ File size within limit
+ID: 2411102 - ✅ Placement size present, ✅ File extension valid, ✅ File size within limit

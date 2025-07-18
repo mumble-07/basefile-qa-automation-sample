@@ -47,7 +47,7 @@ def open_url_with_selenium(url):
             for i, row in enumerate(rows):
                 try:
                     cells = row.find_elements(By.TAG_NAME, 'td')
-                    if len(cells) < 11:
+                    if len(cells) < 13:
                         continue
 
                     creative_name = cells[1].text.strip()
@@ -55,8 +55,15 @@ def open_url_with_selenium(url):
                     status = cells[3].text.strip().upper()
                     creative_type = cells[8].text.strip().lower()
                     placement_size = cells[9].text.strip().lower().replace(' ', '')
+                    base_file_size_text = cells[12].text.strip().upper()
 
-                    print(f"[DEBUG] ID: {creative_id}, Status: {status}, Type: {creative_type}, Placement: {placement_size}, Name: {creative_name}")
+                    # Convert base file size to float KB
+                    try:
+                        size_value = float(base_file_size_text.replace("KB", "").strip())
+                    except:
+                        size_value = 0
+
+                    print(f"[DEBUG] ID: {creative_id}, Status: {status}, Type: {creative_type}, Placement: {placement_size}, Name: {creative_name}, Size: {size_value}KB")
 
                     if status == 'QA':
                         log_msgs = []
@@ -79,6 +86,12 @@ def open_url_with_selenium(url):
                                 log_msgs.append("✅ Type is altimage for image format")
                             else:
                                 log_msgs.append("❌ Type mismatch: should be 'altimage'")
+
+                        # Test Case 4: Base File Size Limit
+                        if size_value > 600:
+                            log_msgs.append(f"❌ Base file size exceeds 600 KB ({size_value} KB)")
+                        else:
+                            log_msgs.append("✅ File size within limit")
 
                         result = f"ID: {creative_id} - " + ", ".join(log_msgs)
                         print("[LOG]", result)
@@ -109,7 +122,7 @@ root.resizable(False, False)
 label = tk.Label(root, text="Enter URL for QA Check:")
 label.pack(pady=10)
 
-url_entry = tk.Entry(root, width=50)  
+url_entry = tk.Entry(root, width=50)
 url_entry.pack()
 
 qa_button = tk.Button(root, text="QA CHECK", command=start_qa_check)
