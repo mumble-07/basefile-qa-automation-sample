@@ -1,0 +1,167 @@
+* {
+    margin: 0;
+    padding: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    -moz-backface-visibility: hidden;
+    -ms-backface-visibility: hidden;
+    -o-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    webkit-user-select: none;
+    /* Safari 3.1+ */
+    -moz-user-select: none;
+    /* Firefox 2+ */
+    -ms-user-select: none;
+    /* IE 10+ */
+    user-select: none;
+    /* Standard syntax */
+}
+
+body {
+    -moz-user-select: none;
+
+}
+
+div {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+p {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-font-smoothing: antialiased;
+    font-smoothing: antialiased;
+    -webkit-transform: translateZ(0);
+}
+
+* {
+    font-size: 100%;
+}
+
+#container {
+    width: 300px;
+    height: 50px;
+    box-sizing: border-box;
+    border: 1px solid #d7d7d7;
+    overflow: hidden;
+    visibility: hidden;
+}
+
+div {
+    position: absolute;
+}
+
+sup {
+    line-height: 0px;
+}
+
+.hotspot {
+    position: absolute;
+    width: 300px;
+    height: 50px;
+    cursor: pointer;
+    left: -1px;
+    top: -1px;
+}
+
+.wrapper {
+    width: 300px;
+    height: 50px;
+    top: -1px;
+    left: -1px;
+
+}
+
+.bg {
+    position: absolute;
+    width: 300px;
+    height: 50px;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.OpenSansRegular {
+    font-family: 'Open Sans', sans-serif;
+    font-weight: 400;
+}
+
+.OpenSansCondenseLight {
+    font-family: 'Open Sans Condensed', sans-serif;
+    font-weight: 300;
+}
+
+
+
+
+/* Property Work's For FireFox Only */
+@-moz-document url-prefix() {}
+
+@media screen and (-ms-high-contrast: active),
+(-ms-high-contrast: none) {}
+.ozempicLogo {
+    position: absolute;
+    width: 300px;
+    height: 50px;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.cta {
+    position: absolute;
+    width: 300px;
+    height: 50px;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+#copy {
+    position: absolute;
+    color: #006072;
+    font-size: 11px;
+    line-height: 12px;
+    top: 5.3px;
+    left: 160px;
+    letter-spacing: 0.46px;
+
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    -o-font-smoothing:antialiased;
+}
+
+
+#footer{
+    position: absolute;
+    bottom: 1.7px;
+    left: 3.5px;
+  
+    font-family: 'Open Sans';
+    color: #333333;
+    font-size: 8px;
+    /*letter-spacing: .55px;*/
+    line-height: 8.5px;
+  
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    -o-font-smoothing:antialiased;
+}
+
+#textBot2, #textBot3, #textBot4 {
+   margin-left: 4.3px;
+}
+
+.l1 {
+    bottom: 1px;
+    left: 4px;
+}
+
+#guide {
+    pointer-events: none;
+}
+

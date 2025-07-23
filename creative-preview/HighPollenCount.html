@@ -1,0 +1,326 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Merck Gefapixant</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <meta name="ad.size" content="width=300,height=600">
+    <style>
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: black;
+        }
+
+        div {
+            background-repeat: no-repeat;
+        }
+
+        #labAd {
+            width: 300px;
+            height: 600px;
+            position: relative;
+            margin: 0 auto;
+            opacity: 1;
+            cursor: pointer;
+            overflow: hidden;
+            background-color: white;
+
+            visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            position: absolute;
+            width: 300px;
+            height: 600px;
+        }
+
+        .adSize {	
+            position: absolute;	
+            top: 0;	
+            left: 0;	
+            width: 300px;	
+            height: 600px;	
+            background-size: 300px 600px;	
+            background-repeat: no-repeat;	
+        }
+
+        #border {	
+            box-shadow: inset 0px 0px 0px 4px #ffffff;	
+        }
+
+        .transition {	
+            -webkit-transition: all .8s ease;	
+            transition: all .8s ease;	
+        }
+
+        .fastTransition {	
+            -webkit-transition: all .5s ease;	
+            transition: all .5s ease;	
+        }
+
+        .fromLeft {
+            transform: translateX(-300px);
+        }
+
+        #bubble_container {	
+            position: absolute;	
+            top: 0px;	
+            left: 0px;
+            width: 300px;
+            height: 314px;
+            overflow: hidden;
+        }
+
+        #bubble {	
+            transform-origin: 150px 115px;	
+            transform: scale(2);	
+        }
+
+    </style>
+</head>
+
+<body>
+    <div id="csTracking" style="display:none;">
+        <!-- Line Item %eaid! ==  Creative ID %ecid! -->
+    </div>
+    <div id="labAd">
+        <div id="container" class="container">
+            <div id="bg" class="adSize"></div>
+            <div id="copy" class="adSize fastTransition fromLeft"></div>
+            <div id="cta" class="adSize fastTransition fromLeft"></div>
+            <div id="bubble_container">
+                <div id="girl" class="adSize fastTransition"></div>
+                <div id="bubble" class="adSize transition"></div>
+            </div>
+        </div>
+        <div id="border" class="adSize"></div>
+    </div>
+
+    <!-- START NO REFRESH CODE -->
+    <script type="text/javascript">
+        try{
+          parent.window.TWC=parent.window.TWC || {};
+          parent.window.TWC.adUtils=parent.window.TWC.adUtils || {};
+          parent.window.TWC.adUtils.killRefresh= parent.window.TWC.adUtils.killRefresh || [];
+          parent.TWC.adUtils.killRefresh.push('%%PATTERN:pos%%');}catch(err){console.log(err);}
+    </script>
+    <!-- END NO REFRESH CODE -->
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script>
+        window.jQuery || document.write('<script src="jquery.min.js"><\/script>')
+    </script>
+    <script type="text/javascript">
+        var labAd = {
+            dir: "https://s.w-x.co/cl/merck/tcl3830-lw-dcb-ani/",
+            width: 300,
+            height: 600,
+            defaultImg: "300x600-backup",
+            prefix: "300x600-",
+            alt: "Merck",
+            dpr: window.devicePixelRatio,
+            data: {
+                apiKey: "",
+                request: 0,
+                requestSuccess: 0,
+                status: false
+            },
+            meta: {
+                jiraID: 'tcl3830', //Example: Future builds will have tcl
+                projectName: 'Merck Gefapixant - Q1 22 - Cross Platform Standard Banner (300x600) (Animated)',
+                product: 'Dynamic Creative Banner',
+                advertiser: 'MERCK', // Ex: 'mcdonalds'
+                placement: '', // Ex: 'ros-shopper-moms
+                created: '03-22-2023', // Ex: '08-23-2018'
+                modified: '', // change when base code changes to current date of change
+                design: 'gsaliaris', // Ex: 'coreyd'
+                dev: 'kmbool' // Ex: 'dks'
+            },
+            product: {
+                productName: 'Dynamic Creative Banner', // Abrev. + Full name of Product
+                version: '1.0', //This will reflect the Github Version on the stable branch
+                type: 'animated', // 'static', 'animated'
+                interactive: '', // EX: 'locator', 'vertical-video', 'swipe-carousel', etc.
+                adaptor: 'base-conditions', //EX: 'temp-range', 'temp-comparison', 'countdown', etc.
+            },
+            platforms: ['ios', 'android'], // 'ios', 'android', 'web', 'mw'
+            ids: { // various id strings for this ad
+                creative: "%ecid!",
+                lineItem: "%eaid!",
+                loc: "%%PATTERN:zip%%",
+                lat: "%%PATTERN:lat%%",
+                long: "%%PATTERN:lon%%",
+                cnd: "%%PATTERN:cnd%%",
+                sev: "%%PATTERN:sev%%",
+                dynght: "%%PATTERN:dynght%%"
+            },
+            errors: [],
+            isMobile: false,
+            tracking: {
+                dfpClick: "%%CLICK_URL_UNESC%%",
+                pixel: "",
+                clickTAG: "https://www.weather.com"
+            },
+            vars: {},
+            testVars: {
+                loc: "40210",
+                lat: "51.2277",
+                long: "6.7735",
+                sevTest: 'winds',
+                cndTest: 'cld',
+                dynghtTest: 'D'
+            },
+            testMode: false,
+            weatherCond: ''
+        }
+
+        $(function () {
+            csWritePixel();
+            try {
+                // jump into testMode for DFP preview
+                //if (window.location.origin == 'http://partner.googleadservices.com') {labAd.testMode = true};
+                if (!window.location.origin)
+                    window.location.origin = window.location.protocol + "//" + window.location.host;
+                if (/(file|wideout|localhost|design)/i.test(window.location.origin)) labAd.testMode = true;
+                // adjust for testMode
+                if (labAd.testMode) {
+                    labAd.ids.loc = labAd.testVars.loc;
+                    labAd.ids.lat = labAd.testVars.lat;
+                    labAd.ids.long = labAd.testVars.long;
+
+                    labAd.ids.sev = labAd.testVars.sevTest;
+                    labAd.ids.cnd = labAd.testVars.cndTest;
+                    labAd.ids.dynght = labAd.testVars.dynghtTest;
+
+                    labAd.tracking.dfpClick = "";
+                    if (parent.testProps) {
+                        labAd.ids.sev = parent.testProps.wxIcon;
+                        labAd.ids.cnd = parent.testProps.wxIcon;
+                        labAd.ids.dynght = parent.testProps.curTime;
+                    }
+                };
+                // define console for browsers that do not support it so no errors are thrown
+                if (!window.console) console = {
+                    log: function () { }
+                };
+
+                setTimeout(showAd, 500);
+
+                // set click handlers
+                $('#labAd').click(function (event) {
+                    exitClick();
+                });
+
+                console.log(labAd);
+            } catch (err) {
+                labAd.errors.push(err);
+                showDefault(err.message);
+                console.log(labAd.errors);
+            }
+        });
+
+        var numberofObject = 3;
+        var images;
+        var loadedImage;
+
+        function showAd() {
+            try {
+
+                images = [
+                    labAd.dir + labAd.prefix + "background" + ".png",
+                    labAd.dir + labAd.prefix + "bubble" + ".png",
+                    labAd.dir + labAd.prefix + "girl" + ".png",
+                    labAd.dir + labAd.prefix + "copy" + ".png",
+                    labAd.dir + labAd.prefix + "cta" + ".png"
+                ];
+
+                loadedImage = 0;
+                for (var i = 0; i <= images.length - 1; i++) {
+                    imageObj = new Image();
+                    imageObj.src = images[i];
+                    imageObj.addEventListener("load", iLoad, false)
+                }
+            } catch (err) {
+                labAd.errors.push(err);
+                showDefault(err.message);
+                console.log(labAd.errors);
+            }
+        }
+
+        function iLoad() {
+            loadedImage++;
+            if (images.length == loadedImage) {
+                bg.style.backgroundImage = "url('" + images[0] + "')";
+                bubble.style.backgroundImage = "url('" + images[1] + "')";	
+                girl.style.backgroundImage = "url('" + images[2] + "')";	
+                copy.style.backgroundImage = "url('" + images[3] + "')";	
+                cta.style.backgroundImage = "url('" + images[4] + "')";
+
+                setTimeout(startAnimation, 100)
+            }
+        }
+
+        //Animation START
+        function startAnimation() {
+            console.log("startAnim");
+            setTimeout(function () {
+                $("#labAd").css('visibility','visible');
+                startAnim();
+            }, 500)
+        }
+
+        function startAnim() {
+            setTimeout(function(){
+                $("#copy").css('transform','translateX(0px)');
+                setTimeout(function() {
+                    $("#bubble").css('transform','scale(1)');
+                    setTimeout(function() {
+                        $("#girl").css('transform','translate(0px, 2px) scale(0.94)');
+                        $("#cta").css('transform','translateX(0px)');
+                    },300)
+                },800)
+            },500);
+        }
+
+        function exitClick() {
+            console.log("exitClick");
+            window.open(labAd.tracking.dfpClick + labAd.tracking.clickTAG, "_blank");
+        }
+
+        function showDefault(reason) {
+            try {
+                $('#labAd').css({
+                    'background': 'url(' + labAd.dir + labAd.defaultImg + ".jpg" + ') no-repeat 0 0'
+                });
+                $('#labAd').css({
+                    'visibility': 'visible',
+                    'opacity': '1',
+                    'background-size': '300px 600px'
+                });
+                $('#labAd').css('opacity', '1');
+                $('#labAd').append('<span style="display:none;">' + reason + '</span>');
+            } catch (err) {
+                labAd.errors.push(err);
+                console.log(labAd.errors);
+            }
+        }
+
+        function csWritePixel() {
+            if (labAd.tracking.pixel != "") {
+                var tDiv = document.createElement("div");
+                tDiv.innerHTML = "<img src=" + labAd.tracking.pixel + " height='1' width='1' border='0' style='display:none'>";
+                document.body.appendChild(tDiv);
+            }
+        }
+
+    </script>
+</body>
+
+</html>

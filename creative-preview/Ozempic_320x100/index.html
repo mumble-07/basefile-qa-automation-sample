@@ -1,0 +1,128 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Ozempic 320x100</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta name="ad.size" content="width=320,height=100">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <!-- <link href="https://fonts.googleapis.com/css2?family=Open+Sans&family=Open+Sans+Condensed:wght@300&display=swap" rel="stylesheet"> -->
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans+Condensed:wght@300&family=Open+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css" />
+
+       <script type="text/javascript">
+           function clicktagExit(url) {
+                window.open(url, '_blank');
+            }
+        
+            var clickTag1 = "https://www.google.com"
+       </script>
+
+</head>
+
+<body>
+    <div id="container">
+            <div id="bg"></div>
+            <div id="logo"></div>
+            <div id="novoLogo"></div>
+            <div id="cta"></div>
+
+            <div id="ctaText">
+                See Prescribing<br>
+                Information and<br>
+                Medication Guide
+            </div>
+
+            <div id="footer">
+                <span id="firstLn">
+                    Ozempic<sup id='regSup'>&reg;</sup> is a registered trademark of Novo Nordisk A/S.<br>
+                </span>
+                <span id="secondLn">
+                    Novo Nordisk is a registered trademark of Novo Nordisk A/S.
+                </span><br>
+                <span>
+                    &copy; 2021 Novo Nordisk <span id="s1">All rights reserved.</span> <span id="s2">US21OZM00204</span> <span id="s3">April 2021</span>
+                </span>
+                
+            </div>
+            
+            <a href="javascript:window.open(window.clickTag1);void(0);">
+                <div id="hotspot" style="width:320px; height:100px;position: absolute;top: -1px;left: -1px; cursor:pointer; z-index: 1;"></div>
+            </a>
+            <!-- <img src="guide/guide.jpg" style="position:absolute;width:320px;height:100px;opacity:.5;left:-1px;top:-1px;"> -->
+    </div>
+
+    <script src="js/wFunction-2.5.0.js"></script>
+    <script type="text/javascript">
+
+        /* Preload Images */
+        var images,
+            loadedImage = 0
+
+        function preloadImages() {
+            images = new Array(
+
+                "img/bg.jpg",
+                "img/logo.png",
+                "img/novoLogo.png",
+                "img/cta.png"
+            );
+
+            for(var i = 0; i < images.length; i++) {
+                imageObj = new Image();
+                imageObj.src=images[i];
+                imageObj.addEventListener("load",iLoad,false)
+            }
+        }
+        function iLoad(){
+            loadedImage++;
+
+            if (images.length == loadedImage) {
+                    w('bg').changeStyle('background-image', 'url("' + images[0] + '")');
+                    w('logo').changeStyle('background-image', 'url("' + images[1] + '")');
+                    w('novoLogo').changeStyle('background-image', 'url("' + images[2] + '")');
+                    w('cta').changeStyle('background-image', 'url("' + images[3] + '")');
+                setTimeout(makeVisible, 500);
+            }
+
+            if(UserBrowser.isMac()){
+                if(UserBrowser.isChrome()){
+                }
+                if(UserBrowser.isFireFox()){
+                    w('ctaText').changeStyle('letter-spacing', '0.1px');
+                }
+            }
+
+            if(UserBrowser.isFireFox()){
+                w('ctaText').changeStyle('letter-spacing', '0.09px');
+                }
+
+            if(UserBrowser.isSafari()){
+                w('ctaText').changeStyle('letter-spacing', '-.55px');
+            }
+
+            if(UserBrowser.isMobile()){
+
+                if(UserBrowser.isSafari()){
+                }
+
+                if(UserBrowser.isChrome()){
+                }
+            }
+
+        }
+
+        function makeVisible() {
+            w('container').changeStyle('visibility', 'visible');
+        }
+
+        setTimeout(preloadImages, 1000);
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,141 @@
+
+* {
+  margin: 0;
+  padding: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
+  -ms-backface-visibility: hidden;
+  -o-backface-visibility: hidden;
+  -webkit-transform: translateZ(0);
+  box-sizing: border-box;
+}
+
+div {
+  position: absolute;
+}
+
+body {
+  user-select: none;
+  -moz-user-select: none;
+}
+
+div {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-font-smoothing: antialiased;
+  font-smoothing: antialiased;
+  -webkit-transform: translateZ(0);
+}
+
+
+#container {
+  width: 320px;
+  height: 100px;
+  box-sizing: border-box;
+  border: 1px solid #d7d7d7;
+  overflow: hidden;
+  visibility: hidden;
+  /*background: #c4c8c8;*/
+}
+
+/* -------------------- CONTENT PROPERTIES -------------------- */
+
+#bg, #logo, #novoLogo, #cta {
+  position: absolute;
+  width: 320px;
+  height: 100px;
+  left: -1px;
+  top: -1px;
+  background-size: contain;
+  box-sizing: border-box;
+
+}
+
+#ctaText{
+  position: absolute;
+  width: 90px;
+  height: 45px;
+  right: 23px;
+  top: 9.5px;
+
+  font-family: 'Open Sans Condensed';
+  font-weight: 300;
+  font-stretch: condensed;
+  color: #006072;
+  font-size: 13px;
+  letter-spacing: .55px;
+  line-height: 15px;
+
+  -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    -o-font-smoothing:antialiased;
+}
+
+#footer{
+  position: absolute;
+  width: 320px;
+  height: 32px;
+  left: 42px;
+  bottom: -1px;
+
+  font-family: 'Open Sans';
+  font-weight: 400;
+  color: #333333;
+  font-size: 8px;
+  /*letter-spacing: .55px;*/
+  line-height: 8.5px;
+
+  -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    -o-font-smoothing:antialiased;
+}
+
+#regSup{
+  position: relative;
+  top: 0px;
+  font-size: 5px;
+}
+
+#firstLn {
+  position: relative;
+  bottom: -1px;
+  left: -.5px;
+}
+
+#secondLn {
+  position: relative;
+  top: .5px;
+}
+
+#s1, #s2{
+  margin-left: 2px;
+}
+
+#s3{
+  margin-left: 4px;
+}
+
+#s2,#s3 {
+  position: relative;
+  top: .5px;
+}
+
+/* Property Work's For Internet Explorer 11, 10 Only */
+@media screen and (-ms-high-contrast: active), (-ms-high-contrast: none) {
+
+#footer{
+ line-height: 8px;
+}
+
+}
+
+
+
+/* Property Work's For FireFox Only */
+@-moz-document url-prefix() {
+}

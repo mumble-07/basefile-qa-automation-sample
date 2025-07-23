@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>Ozempic 320x50</title>
+    <meta name="ad.size" content="width=320,height=50">
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans+Condensed:wght@300&display=swap" rel="stylesheet">
+
+
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="text/javascript">
+        function clicktagExit(url) {
+            window.open(url, '_blank');
+        }
+
+
+        var clickTag1 = "https://www.google.com";
+    </script>
+</head>
+
+<body>
+    <div id="container">
+        <!--Animation Container-->
+        <div class="wrapper">
+            <div id="bg"></div>
+            <div id="logo"></div>
+            <div id="cta"></div>
+            <div id="copy" class="OpenSansCondenseLight">
+                See Prescribing Information<br />
+                and Medication Guide
+            </div>
+            <div id="footer" class="OpenSansRegular">
+                 <span id="textBot" class="OpenSansRegular">
+                &copy; 2021 Novo Nordisk       
+                 </span>
+                <span id="textBot2" class="OpenSansRegular">
+                    All rights reserved.
+                </span>
+                <span id="textBot3" class="OpenSansRegular">
+                    US21OZM00204
+                </span>
+                <span id="textBot4" class=" OpenSansRegular">
+                    April 2021
+                </span>
+            </div>
+           
+
+            <a href="javascript:window.open(window.clickTag1);void(0);">
+                <div id="hotspot" class="hotspot"></div>
+            </a>
+
+        </div>
+
+
+    <!-- <div id="guide" class="guide" style="background: url('guide/guide.jpg'); width: 320px; height: 50px ;  position:absolute; top: -1px; left: -1px; background-size: contain; opacity:.5;"></div> -->
+    </div>
+    <script src="js/wFunction-2.5.0.js"></script>
+    <script>
+        /* Preload Images */
+        var images;
+        var loadedImage = 0;
+
+        var ua = window.navigator.userAgent;
+        var msie = ua.indexOf("MSIE ");
+
+        var expandOn11 = true;
+
+        var iShine = 0,
+            shineIntervel;
+
+        // image source/file location
+        function preloadImages() {
+            images = new Array(
+                "img/bg.jpg",
+                "img/logo.png",
+                "img/cta.png"
+            );
+
+            for (var i = 0; i < images.length; i++) {
+                imageObj = new Image();
+                imageObj.src = images[i];
+                imageObj.addEventListener("load", iLoad, false)
+            }
+        }
+
+        // Load all your assets/images
+        function iLoad() {
+            loadedImage++;
+            if (images.length == loadedImage) {
+                w('bg').changeStyle('background-image', 'url("' + images[0] + '")');
+                w('logo').changeStyle('background-image', 'url("' + images[1] + '")');
+                w('cta').changeStyle('background-image', 'url("' + images[2] + '")');
+
+
+                if(UserBrowser.isMac()){
+                    if(UserBrowser.isChrome()){
+                    }
+                    if(UserBrowser.isFireFox()){
+                        // w('copy').changeStyle('letter-spacing', '.1px');
+                    }
+                }
+
+                if(UserBrowser.isFireFox()){
+                        w('copy').changeStyle('letter-spacing', '.09px');
+                        w('copy').changeStyle('left', '158px');
+                    }
+
+                if(UserBrowser.isSafari()){
+                    w('copy').changeStyle('letter-spacing', '-.46px');
+                }
+
+                // if(/Edge/.test(navigator.userAgent) || /Edg/.test(navigator.userAgent)){
+                //   alert('1')
+                // }else{
+                //   alert('2')
+                //
+                // }
+
+
+                setTimeout(makeVisible, 0);
+            }
+        }
+
+        //1st Animation
+        function makeVisible() {
+            w('container').changeStyle('visibility', 'visible');
+        }
+
+        setTimeout(preloadImages, 1000);
+    </script>
+</body>
+
+</html>
