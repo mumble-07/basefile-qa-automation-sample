@@ -71,7 +71,7 @@ def open_url_with_selenium(url):
                     errors = []
 
                     if placement_size == "1x1":
-                        msg = "✅ AUTO-APPROVED: 1x1 placement detected, skipping other checks"
+                        msg = "1x1 placement detected"
                         log_msgs.append(msg)
                         result = f"ID: {creative_id} - " + msg
                         log_file.write(result + '\n')
@@ -79,46 +79,47 @@ def open_url_with_selenium(url):
 
                     if status == 'QA':
                         if placement_size in creative_name.replace(' ', '').lower():
-                            log_msgs.append("✅ Placement size present")
+                            log_msgs.append("Correct placement size")
                         else:
-                            msg = f"❌ Missing placement '{placement_size}'"
+                            # msg = f"❌ Missing placement '{placement_size}'"
+                            msg = "Incorrect placement size"
                             log_msgs.append(msg)
                             errors.append(msg)
 
                         if any(creative_name.lower().endswith(ext) for ext in all_extensions):
-                            log_msgs.append("✅ File extension valid")
+                            log_msgs.append("Valid file extension")
                         else:
-                            msg = "❌ Missing or invalid file extension"
+                            msg = "Missing or invalid file extension"
                             log_msgs.append(msg)
                             errors.append(msg)
 
                         if any(creative_name.lower().endswith(ext) for ext in image_extensions):
                             if creative_type.lower() == "altimage":
-                                log_msgs.append("✅ Type is altimage for image format")
+                                log_msgs.append("Type is correct")
                             else:
-                                msg = "❌ Type mismatch: should be 'altimage'"
+                                msg = "Type mismatch: should be 'altimage'"
                                 log_msgs.append(msg)
                                 errors.append(msg)
 
                         if size_value > 600:
-                            msg = f"❌ Base file size exceeds 600 KB ({size_value} KB)"
+                            msg = f"Base file size exceeds 600 KB: ({size_value} KB)"
                             log_msgs.append(msg)
                             errors.append(msg)
                         else:
-                            log_msgs.append("✅ File size within limit")
+                            log_msgs.append("File size within limit")
 
                         if creative_name.lower().endswith(".zip"):
                             if creative_type in ["HTML_Standard", "HTML_onpage"]:
-                                log_msgs.append("✅ Correct type for .zip file")
+                                log_msgs.append("Correct type for .zip file")
                             else:
-                                msg = "❌ .zip file must be HTML_Standard or HTML_onpage"
+                                msg = ".zip file must be HTML_Standard or HTML_onpage"
                                 log_msgs.append(msg)
                                 errors.append(msg)
 
                         if creative_name == file_name:
-                            log_msgs.append("✅ Creative name matches file name")
+                            log_msgs.append("Creative name matches file name")
                         else:
-                            msg = "❌ Creative name does not match file name"
+                            msg = "Creative name does not match file name"
                             log_msgs.append(msg)
                             errors.append(msg)
 
@@ -131,9 +132,9 @@ def open_url_with_selenium(url):
                             time.sleep(3)
 
                             if "clicktag" in driver.page_source.lower():
-                                log_msgs.append("✅ ClickTag found in preview")
+                                log_msgs.append("ClickTag found in preview")
                             else:
-                                msg = "❌ ClickTag not detected"
+                                msg = "ClickTag not detected"
                                 log_msgs.append(msg)
                                 errors.append(msg)
 
@@ -143,19 +144,19 @@ def open_url_with_selenium(url):
                                 if entry['level'] == 'SEVERE' and creative_domain in entry['message']
                             ]
                             if filtered_errors:
-                                msg = "❌ Console error detected (from creative)"
+                                msg = "Console error detected (from creative)"
                                 log_msgs.append(msg)
                                 errors.append(msg)
                                 for entry in filtered_errors:
                                     clean_msg = entry['message'].replace('\n', ' ').replace('\r', '')
                                     log_file.write(f"[Console:{creative_id}] {entry['level']}: {clean_msg}\n")
                             else:
-                                log_msgs.append("✅ No console errors")
+                                log_msgs.append("No console errors")
 
                             driver.close()
                             driver.switch_to.window(driver.window_handles[0])
                         except Exception as preview_e:
-                            msg = "⚠️ ClickTag/Console check failed"
+                            msg = "ClickTag/Console check failed"
                             log_msgs.append(msg)
                             errors.append(msg)
 
@@ -166,7 +167,7 @@ def open_url_with_selenium(url):
                             driver.execute_script("""
                                 arguments[0].innerHTML = '<span class="approved-pill">Approved</span>';
                             """, status_cell)
-                            log_msgs.append("✅ All test cases passed – status changed to Approved in UI")
+                            log_msgs.append("✅ All test cases passed – status changed to Approved")
                         except Exception as dom_e:
                             log_msgs.append("⚠️ Failed to change status to Approved in DOM")
 
@@ -185,6 +186,32 @@ def open_url_with_selenium(url):
                     for e in errs:
                         log_file.write(f"  - {e}\n")
                     log_file.write("\n")
+        
+                if summary_errors:
+                    # Build message string
+                    popup_message = ""
+                    for cid, errs in summary_errors.items():
+                        popup_message += f"ID: {cid}\n"
+                        for e in errs:
+                            popup_message += f"  - {e}\n"
+                        popup_message += "\n"
+
+                    # Create popup window
+                    def show_popup():
+                        popup = tk.Toplevel(root)
+                        popup.title("Rejected Creatives")
+                        popup.geometry("600x400")
+
+                        scrollbar = tk.Scrollbar(popup)
+                        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+                        text = tk.Text(popup, wrap=tk.WORD, font=("Arial", 10))
+                        text.pack(expand=True, fill=tk.BOTH)
+                        text.insert(tk.END, popup_message)
+                        text.config(yscrollcommand=scrollbar.set)
+                        scrollbar.config(command=text.yview)
+
+                    root.after(100, show_popup)
 
         log_label.config(text=f"✅ QA check completed! Log saved to: {log_path}", fg="green")
 
@@ -201,8 +228,8 @@ def start_qa_check():
 
 # GUI Setup
 root = tk.Tk()
-root.title("QA Link Checker")
-root.geometry("460x180")
+root.title("Basefile QA")
+root.geometry("1000x180")
 root.resizable(False, False)
 
 label = tk.Label(root, text="Enter URL for QA Check:", font=("Arial", 11))
