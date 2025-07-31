@@ -26,7 +26,9 @@ def selenium_login(username, password, url, region):
         )
 
         # Get all QA status elements
-        qa_elements = driver.find_elements(By.CSS_SELECTOR, ".status-label.in-qa")
+        # qa_elements = driver.find_elements(By.CSS_SELECTOR, ".status-label.in-qa")
+        qa_elements = driver.find_elements(By.CSS_SELECTOR, ".status-label.in-approved")
+
         print(f"✅ Total QA rows found: {len(qa_elements)}")
 
         # Click checkboxes for each QA row
@@ -43,6 +45,31 @@ def selenium_login(username, password, url, region):
                 print("☑️ Ticked checkbox for QA row")
             except Exception as e:
                 print(f"⚠️ Could not tick checkbox for one QA row: {e}")
+
+        # Step 1: Click the "Previews" button
+        try:
+            preview_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, ".bulk-preview-button"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView(true);", preview_button)
+            preview_button.click()
+            print("👁️ Clicked 'Previews' button.")
+        except Exception as e:
+            print(f"❌ Failed to click 'Previews' button: {e}")
+            return
+
+        # Step 2: Click "Preview Creatives (Private)" from the modal
+        try:
+            private_preview_option = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//span[contains(@class, 'action-value') and contains(text(), 'Preview Creatives (Private)')]")
+                )
+            )
+            driver.execute_script("arguments[0].scrollIntoView(true);", private_preview_option)
+            private_preview_option.click()
+            print("📸 Clicked 'Preview Creatives (Private)' option.")
+        except Exception as e:
+            print(f"❌ Failed to select 'Preview Creatives (Private)': {e}")
 
     except Exception as e:
         print("❌ Error:", e)
