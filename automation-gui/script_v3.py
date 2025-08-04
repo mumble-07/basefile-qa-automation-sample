@@ -44,9 +44,8 @@ def real_chrome_zoom_out():
     try:
         driver.maximize_window()
         print("🖥️ Chrome window maximized")
-        time.sleep(1)  # Let Chrome adjust before zoom
-
-        for _ in range(8):  # Press multiple times to reach ~25%
+        time.sleep(1)
+        for _ in range(8):  # Zoom out multiple times
             if pyautogui.platform.system() == "Darwin":  # macOS
                 pyautogui.hotkey("command", "-")
             else:  # Windows/Linux
@@ -55,6 +54,19 @@ def real_chrome_zoom_out():
         print("🔍 Chrome zoomed out to ~25%")
     except Exception as e:
         print(f"⚠️ Could not zoom out Chrome: {e}")
+
+# --- Helper: Parse file size string to KB ---
+def parse_file_size(size_str):
+    """Convert size like '88.2 KB' or '1.2 MB' to KB as float."""
+    if not size_str:
+        return 0.0
+    size_str = size_str.strip().upper()
+    if size_str.endswith("KB"):
+        return float(size_str.replace("KB", "").strip())
+    elif size_str.endswith("MB"):
+        return float(size_str.replace("MB", "").strip()) * 1024
+    else:
+        return 0.0
 
 # --- Selenium login + scan ---
 def selenium_login(username, password, url, skip_restart=False):
@@ -75,14 +87,12 @@ def selenium_login(username, password, url, skip_restart=False):
             driver.find_element(By.NAME, "password").send_keys(Keys.RETURN)
             print(f"🔐 Login attempted for user: {username}")
 
-            # Wait for "approved" status elements to load
             WebDriverWait(driver, 20).until(
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".status-label.in-approved"))
             )
             approved_elements = driver.find_elements(By.CSS_SELECTOR, ".status-label.in-approved")
             print(f"✅ Total 'in-approved' rows found: {len(approved_elements)}")
 
-            # ✅ Maximize and zoom out
             real_chrome_zoom_out()
 
             # --- Scroll vertically to load all rows ---
@@ -100,7 +110,6 @@ def selenium_login(username, password, url, skip_restart=False):
                     last_height = new_height
                 print("📜 Finished vertical scroll, all rows loaded.")
 
-                # --- Scroll horizontally to reveal all columns ---
                 driver.execute_script("arguments[0].scrollLeft = arguments[0].scrollWidth", scrollable_div)
                 time.sleep(0.5)
                 print("➡️ Finished horizontal scroll, all columns revealed.")
@@ -122,8 +131,8 @@ def selenium_login(username, password, url, skip_restart=False):
 
         # --- Print header ---
         print("\n🧪 Results Table")
-        print(f"{'Creative Name':100} {'ID':15} {'Status':20} {'Test Case 1':15} {'Test Case 2':25} {'Test Case 3':10} {'Test Case 4':10}")
-        print("-" * 140)
+        print(f"{'Creative Name':100} {'ID':15} {'Status':20} {'Test Case 1':15} {'Test Case 2':25} {'Test Case 3':10} {'Test Case 4':15} {'Test Case 5':15}")
+        print("-" * 160)
 
         # --- Get all creative rows ---
         rows = driver.find_elements(By.CSS_SELECTOR, "div.react-grid-Row")
@@ -139,32 +148,38 @@ def selenium_login(username, password, url, skip_restart=False):
                 except:
                     creative_name = "[Missing]"
 
-                # Creative ID (auto-detect if available)
+                # Creative ID
                 creative_id = cells[col_index_map.get("id", 0)].text.strip() if "id" in col_index_map else "[Missing]"
 
                 # Status
                 status_text = cells[col_index_map.get("status", 0)].text.strip() if "status" in col_index_map else "[Missing]"
 
-                # Placement Size (auto-detect)
+                # Placement Size
                 if "placement size" in col_index_map:
                     ps_col_idx = col_index_map["placement size"]
                     placement_size = cells[ps_col_idx].text.strip().replace(" ", "") if ps_col_idx < len(cells) else "0x0"
                 else:
                     placement_size = "0x0"
 
-                # Type (auto-detect)
+                # Type
                 if "type" in col_index_map:
                     type_col_idx = col_index_map["type"]
                     creative_type = cells[type_col_idx].text.strip() if type_col_idx < len(cells) else "[Missing]"
                 else:
                     creative_type = "[Missing]"
 
-                # --- TEST CASES ---
+                # Base File Size
+                if "base file size" in col_index_map:
+                    bfs_col_idx = col_index_map["base file size"]
+                    basefile_size = cells[bfs_col_idx].text.strip() if bfs_col_idx < len(cells) else ""
+                else:
+                    basefile_size = ""
+
+                # --- TEST CASE 1 ---
                 test_case_1 = "PASSED" if "approved" in status_text.lower() else "FAIL"
 
                 # --- TEST CASE 2 ---
                 placement_required_types = ["alt image", "html_onpage", "html_expand", "html_standard"]
-
                 if placement_size != "0x0" and creative_type.lower() in placement_required_types:
                     if placement_size in creative_name.replace(" ", ""):
                         test_case_2 = f"PASSED: {placement_size}"
@@ -180,7 +195,6 @@ def selenium_login(username, password, url, skip_restart=False):
                 # --- TEST CASE 4 ---
                 creative_lower = creative_name.lower()
                 image_exts = [".png", ".jpg", ".gif"]
-
                 if any(creative_lower.endswith(ext) for ext in image_exts):
                     if creative_type.lower() == "altimage":
                         test_case_4 = f"PASSED: {creative_type}"
@@ -199,12 +213,18 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_4 = f"N/A: {creative_type}"
 
+                # --- TEST CASE 5 ---
+                basefile_kb = parse_file_size(basefile_size)
+                if basefile_kb > 600:
+                    test_case_5 = f"FAIL: {basefile_kb:.1f} KB"
+                else:
+                    test_case_5 = f"PASSED: {basefile_kb:.1f} KB"
 
                 # Print row results
-                print(f"{creative_name:100} {creative_id:15} {status_text:20} {test_case_1:15} {test_case_2:25} {test_case_3:10} {test_case_4:10}")
+                print(f"{creative_name:100} {creative_id:15} {status_text:20} {test_case_1:15} {test_case_2:25} {test_case_3:10} {test_case_4:15} {test_case_5:15}")
 
             except Exception as e:
-                print(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':10} {'FAIL':10}")
+                print(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':10} {'FAIL':15} {'FAIL':15}")
                 print(f"⚠️ Row {idx+1} failed: {e}")
 
         print("\n🏁 Test complete. Closing browser.")
@@ -222,11 +242,9 @@ def submit():
     username = entry_username.get()
     password = entry_password.get()
     url = entry_url.get()
-
     if not username or not password or not url:
         messagebox.showwarning("Input Error", "Please fill in all fields.")
         return
-
     threading.Thread(target=selenium_login, args=(username, password, url)).start()
 
 # --- GUI Setup ---
@@ -239,17 +257,17 @@ content = tk.Frame(root)
 content.place(relx=0.5, rely=0.5, anchor="center")
 
 # --- ORIGINAL VERSION (COMMENTED OUT) ---
-# tk.Label(content, text="Username:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-# entry_username = tk.Entry(content, width=30)
-# entry_username.grid(row=0, column=1, padx=5, pady=5)
+tk.Label(content, text="Username:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+entry_username = tk.Entry(content, width=30)
+entry_username.grid(row=0, column=1, padx=5, pady=5)
 
-# tk.Label(content, text="Password:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-# entry_password = tk.Entry(content, show="*", width=30)
-# entry_password.grid(row=1, column=1, padx=5, pady=5)
+tk.Label(content, text="Password:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+entry_password = tk.Entry(content, show="*", width=30)
+entry_password.grid(row=1, column=1, padx=5, pady=5)
 
-# tk.Label(content, text="URL:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
-# entry_url = tk.Entry(content, width=30)
-# entry_url.grid(row=2, column=1, padx=5, pady=5)
+tk.Label(content, text="URL:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+entry_url = tk.Entry(content, width=30)
+entry_url.grid(row=2, column=1, padx=5, pady=5)
 
 run_btn = tk.Button(content, text="Run", command=submit, width=20)
 run_btn.grid(row=4, column=0, columnspan=2, pady=15)
