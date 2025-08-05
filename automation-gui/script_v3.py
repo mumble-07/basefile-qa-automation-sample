@@ -12,6 +12,7 @@ import threading
 import traceback
 import time
 import pyautogui  # For real zoom
+import platform
 
 # --- Global Driver ---
 driver = None
@@ -44,9 +45,10 @@ def real_chrome_zoom_out():
     try:
         driver.maximize_window()
         print("🖥️ Chrome window maximized")
-        time.sleep(1)
-        for _ in range(8):  # Zoom out multiple times
-            if pyautogui.platform.system() == "Darwin":  # macOS
+        time.sleep(1)  # Let Chrome adjust before zoom
+
+        for _ in range(8):  # Press multiple times to reach ~25%
+            if platform.system() == "Darwin":  # macOS
                 pyautogui.hotkey("command", "-")
             else:  # Windows/Linux
                 pyautogui.hotkey("ctrl", "-")
@@ -54,19 +56,6 @@ def real_chrome_zoom_out():
         print("🔍 Chrome zoomed out to ~25%")
     except Exception as e:
         print(f"⚠️ Could not zoom out Chrome: {e}")
-
-# --- Helper: Parse file size string to KB ---
-def parse_file_size(size_str):
-    """Convert size like '88.2 KB' or '1.2 MB' to KB as float."""
-    if not size_str:
-        return 0.0
-    size_str = size_str.strip().upper()
-    if size_str.endswith("KB"):
-        return float(size_str.replace("KB", "").strip())
-    elif size_str.endswith("MB"):
-        return float(size_str.replace("MB", "").strip()) * 1024
-    else:
-        return 0.0
 
 # --- Selenium login + scan ---
 def selenium_login(username, password, url, skip_restart=False):
@@ -87,12 +76,14 @@ def selenium_login(username, password, url, skip_restart=False):
             driver.find_element(By.NAME, "password").send_keys(Keys.RETURN)
             print(f"🔐 Login attempted for user: {username}")
 
+            # Wait for "approved" status elements to load
             WebDriverWait(driver, 20).until(
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".status-label.in-approved"))
             )
             approved_elements = driver.find_elements(By.CSS_SELECTOR, ".status-label.in-approved")
             print(f"✅ Total 'in-approved' rows found: {len(approved_elements)}")
 
+            # ✅ Maximize and zoom out
             real_chrome_zoom_out()
 
             # --- Scroll vertically to load all rows ---
@@ -110,6 +101,7 @@ def selenium_login(username, password, url, skip_restart=False):
                     last_height = new_height
                 print("📜 Finished vertical scroll, all rows loaded.")
 
+                # --- Scroll horizontally to reveal all columns ---
                 driver.execute_script("arguments[0].scrollLeft = arguments[0].scrollWidth", scrollable_div)
                 time.sleep(0.5)
                 print("➡️ Finished horizontal scroll, all columns revealed.")
@@ -131,8 +123,9 @@ def selenium_login(username, password, url, skip_restart=False):
 
         # --- Print header ---
         print("\n🧪 Results Table")
-        print(f"{'Creative Name':100} {'ID':15} {'Status':20} {'Test Case 1':15} {'Test Case 2':25} {'Test Case 3':10} {'Test Case 4':15} {'Test Case 5':15}")
-        print("-" * 160)
+        print(f"{'Creative Name':50} {'ID':10} {'Status':10} {'TC1':8} {'TC2':20} {'TC3':15} {'TC4':20} {'TC5':20} {'TC6':15} {'TC7':30} {'TC8':30} {'TC9':20}")
+        print("-" * 250)
+
 
         # --- Get all creative rows ---
         rows = driver.find_elements(By.CSS_SELECTOR, "div.react-grid-Row")
@@ -168,13 +161,6 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     creative_type = "[Missing]"
 
-                # Base File Size
-                if "base file size" in col_index_map:
-                    bfs_col_idx = col_index_map["base file size"]
-                    basefile_size = cells[bfs_col_idx].text.strip() if bfs_col_idx < len(cells) else ""
-                else:
-                    basefile_size = ""
-
                 # --- TEST CASE 1 ---
                 test_case_1 = "PASSED" if "approved" in status_text.lower() else "FAIL"
 
@@ -195,6 +181,7 @@ def selenium_login(username, password, url, skip_restart=False):
                 # --- TEST CASE 4 ---
                 creative_lower = creative_name.lower()
                 image_exts = [".png", ".jpg", ".gif"]
+
                 if any(creative_lower.endswith(ext) for ext in image_exts):
                     if creative_type.lower() == "altimage":
                         test_case_4 = f"PASSED: {creative_type}"
@@ -214,17 +201,88 @@ def selenium_login(username, password, url, skip_restart=False):
                     test_case_4 = f"N/A: {creative_type}"
 
                 # --- TEST CASE 5 ---
-                basefile_kb = parse_file_size(basefile_size)
-                if basefile_kb > 600:
-                    test_case_5 = f"FAIL: {basefile_kb:.1f} KB"
-                else:
-                    test_case_5 = f"PASSED: {basefile_kb:.1f} KB"
+                try:
+                    if "base file size" in col_index_map:
+                        bfs_col_idx = col_index_map["base file size"]
+                        size_text = cells[bfs_col_idx].text.strip().lower()
 
-                # Print row results
-                print(f"{creative_name:100} {creative_id:15} {status_text:20} {test_case_1:15} {test_case_2:25} {test_case_3:10} {test_case_4:15} {test_case_5:15}")
+                        size_kb = 0
+                        if "mb" in size_text:
+                            size_kb = float(size_text.replace("mb", "").strip()) * 1024
+                        elif "kb" in size_text:
+                            size_kb = float(size_text.replace("kb", "").strip())
+                        else:
+                            try:
+                                size_kb = float(size_text)
+                            except:
+                                size_kb = 0
+
+                        if creative_type.lower() in ["preroll", "vastaudio"]:
+                            test_case_5 = "PASSED: No size limit"
+                        else:
+                            if size_kb <= 600:
+                                test_case_5 = f"PASSED: {size_kb:.0f} KB"
+                            else:
+                                test_case_5 = f"FAIL: {size_kb:.0f} KB > 600 KB"
+                    else:
+                        test_case_5 = "[Missing Base File Size]"
+                except Exception as e:
+                    test_case_5 = f"FAIL: Size check error ({e})"
+
+                # --- TEST CASE 6 ---
+                if placement_size.lower() == "1x1":
+                    test_case_6 = "PASSED: Auto-pass for 1x1"
+                else:
+                    test_case_6 = "N/A: not 1x1"
+
+                # TEST CASE 7
+                try:
+                    file_name_col = cells[col_index_map["file name"]].text.strip() if "file name" in col_index_map else ""
+                    if creative_name.lower() == file_name_col.lower():
+                        test_case_7 = "PASSED: Matches"
+                    else:
+                        test_case_7 = f"FAIL: '{creative_name}' != '{file_name_col}'"
+                except:
+                    test_case_7 = "FAIL: Missing"
+
+                # --- TEST CASE 8 ---
+                if creative_type.lower() == "preroll" or "vastaudio" :
+                    # Common duration values (seconds)
+                    duration_values = ["6", "10", "15", "20", "30", "60", "90", "120"]
+                    aspect_ratios = ["16x9", "4x3", "1x1", "9x16"]
+
+                    creative_lower = creative_name.lower()
+
+                    # Check duration presence
+                    has_duration = any(dur in creative_lower for dur in duration_values)
+                    # Check aspect ratio presence
+                    has_ratio = any(ratio in creative_lower for ratio in aspect_ratios)
+
+                    if has_duration and has_ratio:
+                        test_case_8 = "PASSED: Duration & Ratio found"
+                    elif not has_duration and not has_ratio:
+                        test_case_8 = "FAIL: Missing duration & ratio"
+                    elif not has_duration:
+                        test_case_8 = "FAIL: Missing duration"
+                    else:
+                        test_case_8 = "FAIL: Missing ratio"
+                else:
+                    test_case_8 = "N/A"
+
+                # --- TEST CASE 9 ---
+                if creative_lower.endswith(".mp3"):
+                    if creative_type.lower() == "vastaudio":
+                        test_case_9 = f"PASSED: {creative_type}"
+                    else:
+                        test_case_9 = f"FAIL: {creative_type}"
+                else:
+                    test_case_9 = f"N/A: {creative_type}"
+
+
+                print(f"{creative_name:50} {creative_id:10} {status_text:10} {test_case_1:8} {test_case_2:20} {test_case_3:15} {test_case_4:20} {test_case_5:20} {test_case_6:15} {test_case_7:30} {test_case_8:30} {test_case_9:20}")
 
             except Exception as e:
-                print(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':10} {'FAIL':15} {'FAIL':15}")
+                print(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':20} {'FAIL':20} {'FAIL':25} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'FAIL':30}") 
                 print(f"⚠️ Row {idx+1} failed: {e}")
 
         print("\n🏁 Test complete. Closing browser.")
@@ -242,21 +300,23 @@ def submit():
     username = entry_username.get()
     password = entry_password.get()
     url = entry_url.get()
+
     if not username or not password or not url:
         messagebox.showwarning("Input Error", "Please fill in all fields.")
         return
+
     threading.Thread(target=selenium_login, args=(username, password, url)).start()
 
 # --- GUI Setup ---
 root = tk.Tk()
-root.title("Basefile QA Test")
+root.title("Basefile QA - East Coast")
 root.geometry("400x300")
 root.resizable(False, False)
 
 content = tk.Frame(root)
 content.place(relx=0.5, rely=0.5, anchor="center")
 
-# --- ORIGINAL VERSION (COMMENTED OUT) ---
+# # --- ORIGINAL VERSION (COMMENTED OUT) ---
 tk.Label(content, text="Username:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
 entry_username = tk.Entry(content, width=30)
 entry_username.grid(row=0, column=1, padx=5, pady=5)
