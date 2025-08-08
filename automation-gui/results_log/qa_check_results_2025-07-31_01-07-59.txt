@@ -1,0 +1,54 @@
+[Console:1738317] SEVERE: https://images.unsplash.com/favicon.ico - Failed to load resource: the server responded with a status of 404 ()
+ID: 1738317 - Correct placement size, Valid file extension, Type is correct, File size within limit, Creative name matches file name, ClickTag not detected, Console error detected (from creative)
+[Console:1721918] SEVERE: https://plus.unsplash.com/favicon.ico - Failed to load resource: the server responded with a status of 404 ()
+ID: 1721918 - Incorrect placement size, Valid file extension, Type is correct, File size within limit, Creative name matches file name, ClickTag not detected, Console error detected (from creative)
+ID: 8252060 - 
+ID: 8256829 - Correct placement size, Valid file extension, Type is correct, File size within limit, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 1263000 - Correct placement size, Valid file extension, Type is correct, File size within limit, Creative name does not match file name, ClickTag found in preview, No console errors
+ID: 1263001 - Correct placement size, Valid file extension, Base file size exceeds 600 KB: (603.0 KB), Correct type for .zip file, Creative name does not match file name, ClickTag found in preview, No console errors
+ID: 1263002 - 
+ID: 2411301 - Correct placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 2411302 - Correct placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 2411303 - Correct placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 2411304 - Correct placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 2411101 - Correct placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 2411102 - Correct placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, No console errors, ✅ All test cases passed – status changed to Approved
+ID: 2411103 - 1x1 placement detected
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/hearticon.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/circle.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/image1.jpg - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/isiBtnM.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/ctaBg.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/scaleicon.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/novaLogo.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/image3.jpg - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/image2.jpg - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/isiBtnP.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/person2.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/person.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/bg.png - Failed to load resource: the server responded with a status of 404 ()
+[Console:2411104] SEVERE: https://kiarabool.github.io/basefile-qa-automation/creative-preview/Poolout_Revision1/img/dropicon.png - Failed to load resource: the server responded with a status of 404 ()
+ID: 2411104 - Incorrect placement size, Valid file extension, File size within limit, Correct type for .zip file, Creative name matches file name, ClickTag found in preview, Console error detected (from creative)
+
+
+=== SUMMARY OF FAILED CHECKS ===
+ID: 1738317
+  - ClickTag not detected
+  - Console error detected (from creative)
+
+ID: 1721918
+  - Incorrect placement size
+  - ClickTag not detected
+  - Console error detected (from creative)
+
+ID: 1263000
+  - Creative name does not match file name
+
+ID: 1263001
+  - Base file size exceeds 600 KB: (603.0 KB)
+  - Creative name does not match file name
+
+ID: 2411104
+  - Incorrect placement size
+  - Console error detected (from creative)
+

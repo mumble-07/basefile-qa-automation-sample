@@ -316,17 +316,19 @@ root.resizable(False, False)
 content = tk.Frame(root)
 content.place(relx=0.5, rely=0.5, anchor="center")
 
-# # --- ORIGINAL VERSION (COMMENTED OUT) ---
 tk.Label(content, text="Username:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
 entry_username = tk.Entry(content, width=30)
+entry_username.insert(0, "angelo.erni@flashtalking.com")
 entry_username.grid(row=0, column=1, padx=5, pady=5)
 
 tk.Label(content, text="Password:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 entry_password = tk.Entry(content, show="*", width=30)
+entry_password.insert(0, "?+zoRc6pvHG#Y?gDJol1")
 entry_password.grid(row=1, column=1, padx=5, pady=5)
 
 tk.Label(content, text="URL:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
 entry_url = tk.Entry(content, width=30)
+entry_url.insert(0, "https://creative-manager.flashtalking.net/library/193436/")
 entry_url.grid(row=2, column=1, padx=5, pady=5)
 
 run_btn = tk.Button(content, text="Run", command=submit, width=20)
