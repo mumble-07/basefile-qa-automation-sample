@@ -2,3 +2,4 @@ chromedriver-mac-arm64/THIRD_PARTY_NOTICES.chromedriver
 chromedriver-mac-arm64/LICENSE.chromedriver
 chromedriver-mac-arm64/chromedriver
 .DS_Store
+venv/
