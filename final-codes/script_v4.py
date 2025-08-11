@@ -58,14 +58,14 @@ CASE_LABELS = {
     "TC1":  "1] ONLY THOSE CREATIVE WHOSE STATUS IS \"FOR QA\"",
     "TC2":  "2] CREATIVE NAME MUST CONTAIN PLACEMENT SIZE (alt image / html_onpage / html_expand / html_standard)",
     "TC3":  "3] CREATIVE NAME MUST CONTAIN FILE FORMAT AS SUFFIX",
-    "TC4":  "4] TYPE MUST MATCH EXTENSION (altimage: png/jpg/gif • preroll: mp4 • html_standard/html_onpage: zip)",
+    "TC4":  "4] TYPE MUST MATCH EXTENSION (altimage: png/jpg/gif • preroll: mp4 • html_standard/html_onpage/dynamic_preroll: zip)",
     "TC5":  "5] BASE FILE SIZE MUST BE ≤ 600KB (EXCEPT PREROLL & VAST AUDIO)",
     "TC6":  "6] PLACEMENT SIZE 1x1 → AUTO APPROVE",
     "TC7":  "7] CREATIVE NAME IS SAME WITH FILE NAME COLUMN",
     "TC8":  "8] (PREROLL/VASTAUDIO) FILE NAME HAS DURATION & ASPECT RATIO (e.g., 15_16x9-OTT.mp4)",
     "TC9":  "9] MP3 MUST BE VASTAUDIO TYPE",
-    "TC10": "10] CLICKTAG OPENS STANDARD CLICK TAG PAGE",
-    "TC11": "11] NO CONSOLE ERRORS IN PREVIEW (AD IFRAME)",
+    "TC10": "10] CLICKTAG OPENS STANDARD/DYNAMIC CLICK TAG PAGE",
+    "TC11": "11] NO CONSOLE ERRORS IN PREVIEW (AD IFRAME / JW PLAYER)",
 }
 LEFT_COL_WIDTH = max(len(s) for s in CASE_LABELS.values()) + 2  # for nice alignment in mono font
 
@@ -166,8 +166,6 @@ def gui_init_tags():
                                font=(MONO_FONT[0], 10, "bold"))
         log_text.tag_configure("chip_na", foreground="#4b5563", background="#f3f4f6",
                                font=(MONO_FONT[0], 10, "bold"))
-
-        # Skip chip
         log_text.tag_configure("chip_skip", foreground="#374151", background="#e5e7eb",
                                font=(MONO_FONT[0], 10, "bold"))
     except Exception:
@@ -197,12 +195,14 @@ def _clear_log():
         pass
 
 def _gui_write_chip(value: str):
-    """Write a colored chip for PASSED/FAIL/N/A."""
+    """Write a colored chip for PASSED/FAIL/N/A/SKIPPED."""
     v = (value or "").strip().upper()
     if v in ("PASS", "PASSED"):
         _gui_write("  PASSED  ", "chip_pass")
     elif v in ("FAIL", "FAILED"):
         _gui_write("   FAIL   ", "chip_fail")
+    elif v in ("SKIP", "SKIPPED"):
+        _gui_write("  SKIPPED ", "chip_skip")
     else:
         _gui_write("    N/A   ", "chip_na")
 
@@ -224,7 +224,7 @@ def _gui_write_link(url_text: str, url_href: str):
             pass
     root.after(0, _do)
 
-def gui_log_result(creative_id, creative_name, cases_dict, url):
+def gui_log_result(creative_id, creative_name, cases_dict, url, note=None):
     """Detailed block for processed creatives."""
     _gui_write("┄" * 84 + "\n", "divider")
     _gui_write("Creative ID: ", "header")
@@ -252,6 +252,11 @@ def gui_log_result(creative_id, creative_name, cases_dict, url):
         _gui_write(">\n", "dim")
     else:
         _gui_write("\nDone checking for creative <URL: N/A>\n", "dim")
+
+    if note:
+        _gui_write("Note: ", "label")
+        _gui_write(note + "\n", "dim")
+
     _gui_write("┄" * 84 + "\n\n", "divider")
 
 def gui_log_skip(creative_id, creative_name, status_text, url=None):
@@ -397,39 +402,45 @@ def close_browser():
     finally:
         driver = None
 
-# ---------- UX Helpers ----------
-def real_chrome_zoom_out():
-    try:
-        pyautogui.FAILSAFE = False
-        driver.maximize_window()
-        log("🖥️ Browser window maximized")
-        time.sleep(1)
-        for _ in range(8):
-            if platform.system() == "Darwin":
-                pyautogui.hotkey("command", "-")
-            else:
-                pyautogui.hotkey("ctrl", "-")
-            time.sleep(0.15)
-        log("🔍 Browser zoomed out to ~25%")
-    except Exception as e:
-        log(f"⚠️ Could not zoom out browser: {e}")
-
+# ---------- UX / Zoom Helpers ----------
 def reset_zoom():
+    """Restore browser zoom to 100% (OS-level)."""
     try:
         if platform.system() == "Darwin":
             pyautogui.hotkey("command", "0")
         else:
             pyautogui.hotkey("ctrl", "0")
-        time.sleep(0.2)
+        time.sleep(0.15)
         log("🔄 Browser zoom reset to 100%")
     except Exception as e:
         log(f"⚠️ Could not reset zoom: {e}")
+
+def zoom_to(percent=80):
+    """
+    Quick preset zoom using OS-level shortcuts.
+    Always resets to 100 first, then applies the required '-' presses.
+    Supported percents: 100, 90, 80, 67, 50.
+    """
+    presets = {100: 0, 90: 1, 80: 2, 67: 3, 50: 4}
+    try:
+        reset_zoom()
+        n_down = presets.get(int(percent), 0)
+        if n_down:
+            for _ in range(n_down):
+                if platform.system() == "Darwin":
+                    pyautogui.hotkey("command", "-")
+                else:
+                    pyautogui.hotkey("ctrl", "-")
+                time.sleep(0.08)
+        log(f"🔍 Preview zoom set to ~{percent}%")
+    except Exception as e:
+        log(f"⚠️ Could not set zoom to {percent}%: {e}")
 
 # ---------- Helpers for grid/checkbox & Previews ----------
 def _scroll_into_view(el):
     try:
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
-        time.sleep(0.1)
+        time.sleep(0.05)
     except Exception:
         pass
 
@@ -548,82 +559,127 @@ def _get_largest_iframe():
             continue
     return largest
 
-def _click_creative_in_preview():
-    reset_zoom(); time.sleep(0.2)
-    handles_before = set(driver.window_handles)
+def _find_global_click_anchor():
+    """Try to find a /clicktag anchor anywhere in the top document."""
     try:
-        try:
-            frame = WebDriverWait(driver, 6).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "iframe#ad"))
-            )
-        except TimeoutException:
-            frame = _get_largest_iframe()
-            if not frame:
-                raise TimeoutException("Preview iframe not found")
+        return driver.find_element(By.CSS_SELECTOR, "a[href*='/clicktag']")
+    except Exception:
+        return None
+
+# ---------- Click-tag helpers (kept for non-skipped cases) ----------
+def _detect_clicktag_success():
+    try:
+        url = (driver.current_url or "").lower()
+    except Exception:
+        url = ""
+    if "/clicktag" in url:
+        return True
+    xp = ("//*[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'standard click tag') "
+          "or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'dynamic click tag') "
+          "or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'multiple click tag')]")
+    try:
+        WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, xp)))
+        return True
+    except Exception:
+        return False
+
+def _click_creative_in_preview():
+    """
+    Original click-through routine (kept for non-skipped cases).
+    Returns (detected_clicktag: bool, click_tab_handle or None).
+    """
+    handles_before = set(driver.window_handles)
+
+    clicked_somewhere = False
+    switched_to_iframe = False
+
+    # 1) Try iframe#ad first
+    try:
+        frame = WebDriverWait(driver, 4).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "iframe#ad"))
+        )
         driver.switch_to.frame(frame)
+        switched_to_iframe = True
         try:
-            anchor = WebDriverWait(driver, 6).until(
+            anchor = WebDriverWait(driver, 3).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/clicktag']"))
             )
         except TimeoutException:
             anchors = driver.find_elements(By.CSS_SELECTOR, "a[target='_blank'], a[href]")
-            if not anchors:
-                raise TimeoutException("No anchor elements found in preview")
-            best, area = None, -1
-            for a in anchors:
-                try:
-                    ar = driver.execute_script(
-                        "var r=arguments[0].getBoundingClientRect(); return Math.max(0,r.width*r.height);", a
-                    )
-                    if ar > area: best, area = a, ar
-                except Exception:
-                    pass
-            anchor = best or anchors[0]
-        href = anchor.get_attribute("href")
-        try:
-            _scroll_into_view(anchor)
-        except Exception:
-            pass
-        opened = False
-        try:
-            ActionChains(driver).move_to_element(anchor).pause(0.05).click(anchor).perform()
-            WebDriverWait(driver, 4).until(lambda d: len(d.window_handles) > len(handles_before))
-            opened = True
-        except Exception:
+            anchor = anchors[0] if anchors else None
+        if anchor:
             try:
-                driver.execute_script("arguments[0].click();", anchor)
-                WebDriverWait(driver, 4).until(lambda d: len(d.window_handles) > len(handles_before))
-                opened = True
+                _scroll_into_view(anchor)
             except Exception:
                 pass
-        if not opened and href:
-            driver.execute_script("window.open(arguments[0], '_blank');", href)
-            WebDriverWait(driver, 6).until(lambda d: len(d.window_handles) > len(handles_before))
+            try:
+                ActionChains(driver).move_to_element(anchor).pause(0.05).click(anchor).perform()
+                clicked_somewhere = True
+            except Exception:
+                try:
+                    driver.execute_script("arguments[0].click();", anchor)
+                    clicked_somewhere = True
+                except Exception:
+                    pass
+    except Exception:
+        pass
     finally:
-        driver.switch_to.default_content()
-    click_handle = [h for h in driver.window_handles if h not in handles_before]
-    click_handle = click_handle[-1] if click_handle else None
-    if click_handle:
-        driver.switch_to.window(click_handle)
-        WebDriverWait(driver, 15).until(lambda d: d.execute_script("return document.readyState") == "complete")
-    detected = False
-    if click_handle:
+        if switched_to_iframe:
+            driver.switch_to.default_content()
+
+    # 2) If not yet opened, try a global /clicktag anchor
+    if not clicked_somewhere:
+        a = _find_global_click_anchor()
+        if a:
+            try:
+                _scroll_into_view(a)
+            except Exception:
+                pass
+            try:
+                ActionChains(driver).move_to_element(a).pause(0.05).click(a).perform()
+                clicked_somewhere = True
+            except Exception:
+                try:
+                    driver.execute_script("arguments[0].click();", a)
+                    clicked_somewhere = True
+                except Exception:
+                    pass
+
+    # Wait up to 12s for new tab OR same-tab /clicktag
+    click_handle = None
+    deadline = time.time() + 12.0
+    while time.time() < deadline:
         try:
-            WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH,
-                    "//*[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'standard click tag')]"))
-            )
-            detected = True
+            if len(driver.window_handles) > len(handles_before): break
+            if "/clicktag" in (driver.current_url or "").lower(): break
         except Exception:
-            detected = False
+            pass
+        time.sleep(0.25)
+
+    new_handles = [h for h in driver.window_handles if h not in handles_before]
+    if new_handles:
+        click_handle = new_handles[-1]
+        driver.switch_to.window(click_handle)
+        try:
+            WebDriverWait(driver, 8).until(lambda d: d.execute_script("return document.readyState") == "complete")
+        except Exception:
+            pass
+
+    detected = _detect_clicktag_success()
     log(f"{'✅' if detected else '❌'} ClickTag page {'detected' if detected else 'not detected'}."
         f" Title={driver.title!r}, URL={driver.current_url}")
     return detected, click_handle
 
+# ---------- Console errors ----------
 def _check_preview_console_errors():
+    """
+    Read browser console logs in the Preview tab and flag only relevant errors.
+    If iframe#ad exists, filter by its origin. Otherwise fall back to the current page origin.
+    """
     allowed_patterns = []
+    # Try iframe first
     try:
-        frame = WebDriverWait(driver, 5).until(
+        frame = WebDriverWait(driver, 3).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "iframe#ad"))
         )
         src = (frame.get_attribute("src") or "").strip()
@@ -631,7 +687,14 @@ def _check_preview_console_errors():
             u = urlparse(src)
             allowed_patterns = [f"{u.scheme}://{u.netloc}/lcrp/", u.netloc]
     except Exception:
-        return False, []
+        # Fallback: use current URL origin
+        try:
+            u = urlparse(driver.current_url)
+            if u.netloc:
+                allowed_patterns = [u.netloc]
+        except Exception:
+            pass
+
     ignore_substrings = [
         "/crm/v1/user", "/int/v1/ui/creative-libraries", "grafana/faro-web-sdk",
         "Problem Starting up Pendo", "DEPRECATED_ENDPOINT", "SharedImageManager::ProduceMemory",
@@ -685,8 +748,6 @@ def selenium_login(username, password, url, skip_restart=False):
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".react-grid-Row"))
             )
 
-            real_chrome_zoom_out()
-
             # Load all rows/columns
             try:
                 scrollable_div = WebDriverWait(driver, 10).until(
@@ -695,13 +756,13 @@ def selenium_login(username, password, url, skip_restart=False):
                 last_height = driver.execute_script("return arguments[0].scrollHeight", scrollable_div)
                 while True:
                     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scrollable_div)
-                    time.sleep(0.5)
+                    time.sleep(0.4)
                     new_height = driver.execute_script("return arguments[0].scrollHeight", scrollable_div)
                     if new_height == last_height:
                         break
                     last_height = new_height
                 driver.execute_script("arguments[0].scrollLeft = arguments[0].scrollWidth", scrollable_div)
-                time.sleep(0.5)
+                time.sleep(0.4)
                 log("📜 All rows loaded and columns revealed.")
             except Exception as e:
                 log(f"⚠️ Could not complete scrolling: {e}")
@@ -790,21 +851,36 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_2 = "PASSED"
 
-                valid_formats = [".jpg", ".jpeg", ".png", ".gif", ".mp3", ".mp4"]
-                test_case_3 = "PASSED" if any(creative_name.lower().endswith(fmt) for fmt in valid_formats) else "FAIL"
-
+                # TYPE ↔ EXTENSION mapping (supports dynamic_preroll zipped creatives)
                 creative_lower = creative_name.lower()
-                image_exts = [".png", ".jpg", ".gif"]
-                ctype = creative_type.lower().replace(" ", "")
-                if any(creative_lower.endswith(ext) for ext in image_exts):
-                    test_case_4 = "PASSED" if ctype == "altimage" else "FAIL"
-                elif creative_lower.endswith(".zip"):
-                    test_case_4 = "PASSED" if ctype in ["html_standard", "html_onpage", "htmlstandard", "htmlonpage"] else "FAIL"
-                elif creative_lower.endswith(".mp4"):
-                    test_case_4 = "PASSED" if ctype == "preroll" else "FAIL"
+                ctype = creative_type.lower().replace(" ", "").replace("-", "_")
+
+                ext_ok_map = {
+                    "altimage": {".png", ".jpg", ".jpeg", ".gif"},
+                    "htmlonpage": {".zip"},
+                    "html_standard": {".zip"},
+                    "htmlstandard": {".zip"},
+                    "html_onpage": {".zip"},
+                    "preroll": {".mp4"},
+                    "dynamic_preroll": {".zip"},   # zipped dynamic video
+                    "vastaudio": {".mp3"},
+                }
+                # pick extension
+                ext = ""
+                for e in (".mp4", ".mp3", ".zip", ".png", ".jpg", ".jpeg", ".gif"):
+                    if creative_lower.endswith(e):
+                        ext = e
+                        break
+                if ctype in ext_ok_map:
+                    test_case_4 = "PASSED" if ext in ext_ok_map[ctype] else "FAIL"
                 else:
                     test_case_4 = "N/A"
 
+                # --- TEST CASE #3 (suffix) ---
+                valid_formats = [".jpg", ".jpeg", ".png", ".gif", ".mp3", ".mp4", ".zip"]
+                test_case_3 = "PASSED" if any(creative_lower.endswith(fmt) for fmt in valid_formats) else "FAIL"
+
+                # --- TEST CASE #5 ---
                 try:
                     if "base file size" in col_index_map:
                         bfs_col_idx = col_index_map["base file size"]
@@ -819,7 +895,7 @@ def selenium_login(username, password, url, skip_restart=False):
                                 size_kb = float(size_text)
                             except Exception:
                                 size_kb = 0.0
-                        if ctype in ["preroll", "vastaudio"]:
+                        if ctype in ["preroll", "dynamic_preroll", "vastaudio"]:
                             test_case_5 = "PASSED"
                         else:
                             test_case_5 = "PASSED" if size_kb <= 600 else "FAIL"
@@ -836,7 +912,7 @@ def selenium_login(username, password, url, skip_restart=False):
                 except Exception:
                     test_case_7 = "FAIL"
 
-                if ctype in ["preroll", "vastaudio"]:
+                if ctype in ["preroll", "dynamic_preroll", "vastaudio"]:
                     duration_values = ["6", "10", "15", "20", "30", "60", "90", "120"]
                     aspect_ratios = ["16x9", "4x3", "1x1", "9x16"]
                     has_duration = any(dur in creative_lower for dur in duration_values)
@@ -850,16 +926,26 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_9 = "N/A"
 
-                last_checked_url = creative_url or ""
-                if creative_lower.endswith(".mp3"):
+                # --- Decide preview/click behavior ---
+                # Skip opening preview entirely if: ZIP + (dynamic_preroll/html_onpage/preroll)
+                skip_preview = (ext in {".zip", ".mp4"} and ctype in {"dynamic_preroll", "html_onpage", "htmlonpage", "preroll"})
+                note = None
+
+                if skip_preview:
+                    tc10_status = "SKIPPED"
+                    tc11_status = "SKIPPED"
+                    note = "Preview & ClickTag checks skipped for ZIP + (dynamic_preroll/html_onpage/preroll). Please verify manually."
+                elif creative_lower.endswith(".mp3"):
                     tc10_status = "-"
                     tc11_status = "N/A"
                 else:
+                    # Default TC10/11 values
                     tc10_status = "-"
                     tc11_status = "-"
-                    reset_zoom()
-                    clicked = _click_checkbox_in_row(row)
-                    if clicked:
+
+                    # Select row, open preview, zoom to ~80%, run TC11 and optionally TC10, then restore 100%
+                    clicked_row = _click_checkbox_in_row(row)
+                    if clicked_row:
                         root_handle = driver.current_window_handle
                         preview_handle = None
                         click_handle = None
@@ -868,7 +954,11 @@ def selenium_login(username, password, url, skip_restart=False):
                             try:
                                 last_checked_url = driver.current_url
                             except Exception:
-                                pass
+                                last_checked_url = creative_url or ""
+
+                            zoom_to(80)  # make the ad comfortably clickable/visible
+
+                            # TC11: Console errors (always check)
                             has_errors, errs = _check_preview_console_errors()
                             tc11_status = "FAIL" if has_errors else "PASSED"
                             if has_errors:
@@ -877,12 +967,16 @@ def selenium_login(username, password, url, skip_restart=False):
                                     log("    " + e[:500])
                             else:
                                 log("✅ TC11: No console errors detected in Preview.")
+
+                            # TC10: ClickTag
                             detected, click_handle = _click_creative_in_preview()
                             tc10_status = "PASSED" if detected else "FAIL"
                             log(f"TC10 ClickTag: {tc10_status}")
+
                         except Exception as e:
                             log(f"⚠️ TC10/11 preview flow error: {e}")
                         finally:
+                            # close tabs & restore
                             try:
                                 if click_handle and click_handle in driver.window_handles:
                                     driver.switch_to.window(click_handle); driver.close()
@@ -903,14 +997,14 @@ def selenium_login(username, password, url, skip_restart=False):
                                 log("☑️ Row unchecked.")
                             except Exception as ue:
                                 log(f"⚠️ Could not uncheck row: {ue}")
-                    else:
-                        tc10_status = "NOT FOUND/CLICKABLE"
+                            reset_zoom()
 
                 # processed count (either all rows, or only QA rows)
                 processed_count += 1
                 _set_summary(processed_count, expected_total)
 
                 # Console row
+                last_checked_url = creative_url or ""
                 log(f"{creative_name:50} {creative_id:10} {status_text:12} {test_case_1:8} {test_case_2:20} {test_case_3:15} {test_case_4:20} {test_case_5:20} {test_case_6:15} {test_case_7:30} {test_case_8:30} {test_case_9:20} {tc10_status:10} {tc11_status:10}")
 
                 # GUI full row
@@ -920,7 +1014,7 @@ def selenium_login(username, password, url, skip_restart=False):
                     "TC7":  test_case_7, "TC8":  test_case_8, "TC9":  test_case_9,
                     "TC10": tc10_status, "TC11": tc11_status,
                 }
-                gui_log_result(creative_id, creative_name, cases, last_checked_url)
+                gui_log_result(creative_id, creative_name, cases, last_checked_url, note=note)
 
             except Exception as e:
                 log(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':20} {'FAIL':20} {'FAIL':25} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'-':10} {'-':10}")
