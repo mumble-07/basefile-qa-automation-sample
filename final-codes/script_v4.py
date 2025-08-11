@@ -4,11 +4,13 @@ import platform
 import threading
 import traceback
 import time
+import webbrowser
 from pathlib import Path
 
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import scrolledtext
+from tkinter import font as tkfont
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -19,7 +21,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException, TimeoutException
+from selenium.common.exceptions import TimeoutException
 from urllib.parse import urlparse
 
 # Optional (used for OS-level zoom)
@@ -30,14 +32,32 @@ driver = None
 _restart_attempts = 0
 _MAX_RESTARTS = 1  # prevent infinite restart loops
 
-# --- GUI refs (set later) ---
+# --- GUI refs & fonts (set later) ---
 log_text = None
 root = None
+UI_FONT = ("Segoe UI", 10)
+TITLE_FONT = ("Segoe UI", 13, "bold")
+MONO_FONT = ("Consolas", 10)
 
 # --- Your exact XPaths (added) ---
 XPATH_PREVIEWS_BTN_SPAN = "/html/body/main/section/div[2]/div[1]/div[2]/div[3]/div[1]/div/button/span"
 XPATH_PREVIEW_CREATIVE_PRIVATE = "/html/body/div[2]/div[3]/nav/div[2]/div/span"
 
+# --- Pretty labels that mirror your comments per TC ---
+CASE_LABELS = {
+    "TC1":  "1] ONLY THOSE CREATIVE WHOSE STATUS IS \"FOR QA\"",
+    "TC2":  "2] CREATIVE NAME MUST CONTAIN PLACEMENT SIZE (alt image / html_onpage / html_expand / html_standard)",
+    "TC3":  "3] CREATIVE NAME MUST CONTAIN FILE FORMAT AS SUFFIX",
+    "TC4":  "4] TYPE MUST MATCH EXTENSION (altimage: png/jpg/gif • preroll: mp4 • html_standard/html_onpage: zip)",
+    "TC5":  "5] BASE FILE SIZE MUST BE ≤ 600KB (EXCEPT PREROLL & VAST AUDIO)",
+    "TC6":  "6] PLACEMENT SIZE 1x1 → AUTO APPROVE",
+    "TC7":  "7] CREATIVE NAME IS SAME WITH FILE NAME COLUMN",
+    "TC8":  "8] (PREROLL/VASTAUDIO) FILE NAME HAS DURATION & ASPECT RATIO (e.g., 15_16x9-OTT.mp4)",
+    "TC9":  "9] MP3 MUST BE VASTAUDIO TYPE",
+    "TC10": "10] CLICKTAG OPENS STANDARD CLICK TAG PAGE",
+    "TC11": "11] NO CONSOLE ERRORS IN PREVIEW (AD IFRAME)",
+}
+LEFT_COL_WIDTH = max(len(s) for s in CASE_LABELS.values()) + 2  # for nice alignment in mono font
 
 # ------------------------------
 # Console logger (terminal only)
@@ -46,6 +66,25 @@ def log(message: str):
     ts = time.strftime("%H:%M:%S")
     print(f"[{ts}] {message}")
 
+# ------------------------------
+# Font detection (run after root)
+# ------------------------------
+def detect_fonts():
+    global UI_FONT, TITLE_FONT, MONO_FONT
+    try:
+        fams = set(tkfont.families())
+        def pick(candidates, fallback):
+            for n in candidates:
+                if n in fams:
+                    return n
+            return fallback
+        ui = pick(["Segoe UI Variable", "Segoe UI", "Inter", "Arial"], "Segoe UI")
+        mono = pick(["Cascadia Code", "Consolas", "Courier New"], "Consolas")
+        UI_FONT = (ui, 10)
+        TITLE_FONT = (ui, 13, "bold")
+        MONO_FONT = (mono, 10)
+    except Exception:
+        pass
 
 # ------------------------------
 # Pretty GUI log helpers
@@ -53,18 +92,26 @@ def log(message: str):
 def gui_init_tags():
     """Setup text tags for colors/styles."""
     try:
-        log_text.tag_configure("header", font=("Segoe UI", 10, "bold"))
-        log_text.tag_configure("label", font=("Consolas", 9))
-        log_text.tag_configure("pass", foreground="#0a7f24", font=("Consolas", 9, "bold"))
-        log_text.tag_configure("fail", foreground="#c1121f", font=("Consolas", 9, "bold"))
-        log_text.tag_configure("na", foreground="#6b7280", font=("Consolas", 9, "italic"))
-        log_text.tag_configure("url", foreground="#0369a1", font=("Consolas", 9))
-        log_text.tag_configure("dim", foreground="#6b7280")
+        # Structure
         log_text.tag_configure("divider", foreground="#9ca3af")
-        log_text.tag_configure("name", foreground="#374151")
+        log_text.tag_configure("dim", foreground="#6b7280", font=(UI_FONT[0], 9))
+        log_text.tag_configure("title", font=(UI_FONT[0], 11, "bold"))
+        log_text.tag_configure("header", font=(UI_FONT[0], 10, "bold"))
+
+        # Body text
+        log_text.tag_configure("label", font=(MONO_FONT[0], 10))
+        log_text.tag_configure("name", foreground="#111827", font=(UI_FONT[0], 10))
+        log_text.tag_configure("url", foreground="#0369a1", font=(MONO_FONT[0], 10), underline=True)
+
+        # Status chips
+        log_text.tag_configure("chip_pass", foreground="#065f46", background="#ccfbf1",
+                               font=(MONO_FONT[0], 10, "bold"))
+        log_text.tag_configure("chip_fail", foreground="#991b1b", background="#fee2e2",
+                               font=(MONO_FONT[0], 10, "bold"))
+        log_text.tag_configure("chip_na", foreground="#4b5563", background="#f3f4f6",
+                               font=(MONO_FONT[0], 10, "bold"))
     except Exception:
         pass
-
 
 def _gui_write(text, *tags):
     """Append text to GUI log on UI thread."""
@@ -81,57 +128,76 @@ def _gui_write(text, *tags):
     except Exception:
         pass
 
+def _gui_write_chip(value: str):
+    """Write a colored chip for PASSED/FAIL/N/A."""
+    v = (value or "").strip().upper()
+    if v in ("PASS", "PASSED"):
+        _gui_write("  PASSED  ", "chip_pass")
+    elif v in ("FAIL", "FAILED"):
+        _gui_write("   FAIL   ", "chip_fail")
+    else:
+        _gui_write("    N/A   ", "chip_na")
+
+def _gui_write_link(url_text: str, url_href: str):
+    """Insert a clickable link tag for the URL."""
+    tag = f"link-{int(time.time()*1000)}"
+    def _do():
+        try:
+            log_text.configure(state="normal")
+            log_text.insert("end", url_text, (tag, "url"))
+            log_text.configure(state="disabled")
+            def _open(_evt, u=url_href):
+                try:
+                    webbrowser.open(u)
+                except Exception:
+                    pass
+            log_text.tag_bind(tag, "<Button-1>", _open)
+        except Exception:
+            pass
+    root.after(0, _do)
 
 def gui_log_result(creative_id, creative_name, cases_dict, url):
     """
-    Pretty block:
-    ────────────
-    Creative ID: 5460184  • Name: AudioBanner_300x250.jpg
-      TC1: PASSED
-      TC2: FAIL
-      ...
-    Done checking for creative <URL: https://...>
-    ────────────
+    Pretty block for each creative with aligned labels, colored status chips, and clickable URL.
     """
-    # Divider
-    _gui_write("────────────────────────────────────────────────────────\n", "divider")
+    # Top divider
+    _gui_write("┄" * 84 + "\n", "divider")
 
-    # Header
+    # Header line
     _gui_write("Creative ID: ", "header")
-    _gui_write(str(creative_id or "N/A") + "  ", "header")
+    _gui_write(str(creative_id or "N/A"), "title")
     if creative_name and creative_name != "[Missing]":
-        _gui_write("• Name: ", "name")
+        _gui_write("   •   Name: ", "header")
         _gui_write(creative_name + "\n", "name")
     else:
         _gui_write("\n",)
 
-    # Body (TEST CASE #1 TO TEST CASE #11 in order)
+    # Test cases (TC1 → TC11)
     ordered_keys = [f"TC{i}" for i in range(1, 12)]
     for key in ordered_keys:
-        value = cases_dict.get(key, "-")
-        tag = "label"
-        vlow = (value or "").lower()
-        if "pass" in vlow:
-            tag = "pass"
-        elif "fail" in vlow:
-            tag = "fail"
-        elif "n/a" in vlow or value == "-":
-            tag = "na"
+        label_text = CASE_LABELS.get(key, key)
+        value = (cases_dict.get(key, "-") or "-")
+        status_for_chip = value
+        if value.strip() == "-":
+            status_for_chip = "N/A"
 
-        _gui_write(f"  {key}: ", "label")
-        _gui_write(f"{value}\n", tag)
+        left = f"  {label_text}: "
+        # align left col (monospace)
+        pad = " " * max(0, LEFT_COL_WIDTH - len(label_text))
+        _gui_write(left + pad, "label")
+        _gui_write_chip(status_for_chip)
+        _gui_write("\n")
 
-    # URL line
+    # URL line with clickable link
     if url:
-        _gui_write("Done checking for creative <URL: ", "dim")
-        _gui_write(url, "url")
+        _gui_write("\nDone checking for creative <URL: ", "dim")
+        _gui_write_link(url, url)
         _gui_write(">\n", "dim")
     else:
-        _gui_write("Done checking for creative <URL: N/A>\n", "dim")
+        _gui_write("\nDone checking for creative <URL: N/A>\n", "dim")
 
-    # End divider
-    _gui_write("────────────────────────────────────────────────────────\n\n", "divider")
-
+    # Bottom divider + spacing
+    _gui_write("┄" * 84 + "\n\n", "divider")
 
 def focus_app_window():
     """Bring the Tk window to the front and give it focus."""
@@ -144,9 +210,7 @@ def focus_app_window():
     except Exception as e:
         log(f"⚠️ Could not refocus GUI: {e}")
 
-
 # ---------- Browser Bootstrap Helpers ----------
-
 def _find_chrome_binary_windows():
     """Try common Chrome locations on Windows and PATH."""
     candidates = [
@@ -160,18 +224,15 @@ def _find_chrome_binary_windows():
             return c
     return None
 
-
 def _apply_common_options(opts):
     """Hardened default flags that work well in CI/desktops."""
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
-    # For stability when running in background
     opts.add_argument("--disable-notifications")
     opts.add_argument("--disable-infobars")
     opts.add_argument("--start-maximized")
     return opts
-
 
 def start_driver():
     """
@@ -194,7 +255,6 @@ def start_driver():
     # Enable browser console logs for TC11
     chrome_options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
 
-    # Help Selenium find Chrome on Windows if needed
     if system_name == "Windows":
         chrome_binary = _find_chrome_binary_windows()
         if chrome_binary:
@@ -204,7 +264,6 @@ def start_driver():
             log("⚠️ Chrome binary not found in common locations/ PATH.")
 
     try:
-        # Selenium Manager (no explicit driver path) — downloads/locates correct driver
         driver = webdriver.Chrome(service=ChromeService(), options=chrome_options)
         driver.set_page_load_timeout(30)
         driver.implicitly_wait(10)
@@ -213,13 +272,12 @@ def start_driver():
     except Exception as e:
         log(f"❌ Chrome failed to start via Selenium Manager: {e}")
 
-    # --- Fallback to Edge (also Selenium Manager) ---
+    # --- Fallback to Edge ---
     try:
         from selenium.webdriver import EdgeOptions
         from selenium.webdriver.edge.service import Service as EdgeService
 
         edge_options = _apply_common_options(EdgeOptions())
-        # Enable browser console logs for TC11
         edge_options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
 
         driver = webdriver.Edge(service=EdgeService(), options=edge_options)
@@ -230,12 +288,10 @@ def start_driver():
     except Exception as e2:
         log(f"❌ Edge fallback failed: {e2}")
 
-    # If both fail, raise a clear error
     raise RuntimeError(
         "Unable to start a WebDriver session. Ensure Chrome or Edge is installed "
         "and that this environment allows Selenium Manager to fetch drivers."
     )
-
 
 def restart_driver(username, password, url):
     global _restart_attempts
@@ -246,9 +302,7 @@ def restart_driver(username, password, url):
     start_driver()
     return selenium_login(username, password, url, skip_restart=True)
 
-
 # ---------- UX Helpers ----------
-
 def real_chrome_zoom_out():
     """Maximize window and send real OS-level Cmd/Ctrl + '-' to the browser."""
     try:
@@ -268,7 +322,6 @@ def real_chrome_zoom_out():
     except Exception as e:
         log(f"⚠️ Could not zoom out browser: {e}")
 
-
 def reset_zoom():
     """Restore browser zoom to 100% (OS-level)."""
     try:
@@ -281,9 +334,7 @@ def reset_zoom():
     except Exception as e:
         log(f"⚠️ Could not reset zoom: {e}")
 
-
 # ---------- Helpers for grid/checkbox & Previews ----------
-
 def _scroll_into_view(el):
     try:
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
@@ -367,7 +418,7 @@ def _open_preview_for_selected():
 
     # Click Previews button (retries)
     previews_clicked = False
-    for attempt in range(3):
+    for _ in range(3):
         btn = None
         for by, sel in preview_btn_locators:
             try:
@@ -436,8 +487,6 @@ def _click_creative_in_preview():
     In the Preview tab, click the anchor inside iframe#ad to open the click-through.
     Returns (detected_standard_clicktag: bool, click_tab_handle or None).
     """
-    from selenium.common.exceptions import TimeoutException
-
     reset_zoom(); time.sleep(0.2)
 
     handles_before = set(driver.window_handles)
@@ -578,9 +627,7 @@ def _check_preview_console_errors():
 
     return (len(errors) > 0), errors
 
-
 # ---------- Main Selenium Flow ----------
-
 def selenium_login(username, password, url, skip_restart=False):
     """
     Navigate to the given URL, perform login, scan grid, and print checks.
@@ -684,38 +731,24 @@ def selenium_login(username, password, url, skip_restart=False):
                     creative_type = "[Missing]"
 
                 # --- TEST CASE #1 ---
-                ##############################################
-                ## ONLY THOSE CREATIVE WHOSE STATUS IS "FOR QA"
-                ##############################################
+                # ONLY THOSE CREATIVE WHOSE STATUS IS "FOR QA"
                 test_case_1 = "PASSED" if "approved" in status_text.lower() else "FAIL"
 
                 # --- TEST CASE #2 ---
-                ##############################################
-                ## CREATIVE NAME MUST CONTAIN PLACEMENT SIZE FOR FORMATS:
-                ## alt image, html_onpage, html_expand, html_standard
-                ##############################################
+                # CREATIVE NAME MUST CONTAIN PLACEMENT SIZE for alt image / html_onpage / html_expand / html_standard
                 placement_required_types = ["alt image", "html_onpage", "html_expand", "html_standard"]
                 if placement_size != "0x0" and creative_type.lower() in placement_required_types:
-                    if placement_size in creative_name.replace(" ", ""):
-                        test_case_2 = f"PASSED"
-                    else:
-                        test_case_2 = f"FAIL"
+                    test_case_2 = "PASSED" if placement_size in creative_name.replace(" ", "") else "FAIL"
                 else:
-                    test_case_2 = f"PASSED"
+                    test_case_2 = "PASSED"
 
                 # --- TEST CASE #3 ---
-                ##############################################
-                ## CREATIVE NAME MUST CONTAIN FILE FORMAT AS SUFFIX
-                ##############################################
+                # CREATIVE NAME MUST CONTAIN FILE FORMAT AS SUFFIX
                 valid_formats = [".jpg", ".jpeg", ".png", ".gif", ".mp3", ".mp4"]
                 test_case_3 = "PASSED" if any(creative_name.lower().endswith(fmt) for fmt in valid_formats) else "FAIL"
 
                 # --- TEST CASE #4 ---
-                ##############################################
-                ## ALT IMAGE IF CREATIVE IS: [png, jpg, gif]
-                ## PREROLL IF CREATIVE IS: [mp4]
-                ## HTML_STANDARD, HTML_ONPAGE IF CREATIVE IS: [zip]
-                ##############################################
+                # TYPE MUST MATCH EXTENSION
                 creative_lower = creative_name.lower()
                 image_exts = [".png", ".jpg", ".gif"]
                 ctype = creative_type.lower().replace(" ", "")
@@ -729,10 +762,7 @@ def selenium_login(username, password, url, skip_restart=False):
                     test_case_4 = "N/A"
 
                 # --- TEST CASE #5 ---
-                ##############################################
-                ## BASE FILE SIZE MUST BE LESS THAN 600KB
-                ## EXCEPT FOR PREROLL & VAST AUDIO
-                ##############################################
+                # BASE FILE SIZE ≤ 600KB (except preroll & vastaudio)
                 try:
                     if "base file size" in col_index_map:
                         bfs_col_idx = col_index_map["base file size"]
@@ -759,16 +789,11 @@ def selenium_login(username, password, url, skip_restart=False):
                     test_case_5 = "FAIL"
 
                 # --- TEST CASE #6 ---
-                ##############################################
-                ## PLACEMENT SIZE IS: 1x1
-                ## AUTO APPROVE!
-                ##############################################
+                # 1x1 → auto approve
                 test_case_6 = "PASSED" if placement_size.lower() == "1x1" else "N/A"
 
                 # --- TEST CASE #7 ---
-                ##############################################
-                ## CREATIVE NAME IS SAME WITH FILE NAME
-                ##############################################
+                # Creative name matches file name column
                 try:
                     file_name_col = cells[col_index_map["file name"]].text.strip() if "file name" in col_index_map else ""
                     test_case_7 = "PASSED" if creative_name.lower() == file_name_col.lower() else "FAIL"
@@ -776,40 +801,24 @@ def selenium_login(username, password, url, skip_restart=False):
                     test_case_7 = "FAIL"
 
                 # --- TEST CASE #8 ---
-                ##############################################
-                ## FOR PREROLL & VAST AUDIO:
-                ## CREATIVE FILE NAME USUALLY HAS: DURATION & ASPECT RATIO
-                ## EXAMPLE: 15_16x9-0TT.mp4
-                ## > 15 video duration
-                ## > 16x9 ratio [1920x1080px]
-                ##############################################
+                # Duration & aspect ratio in filename for preroll/vastaudio
                 if ctype in ["preroll", "vastaudio"]:
                     duration_values = ["6", "10", "15", "20", "30", "60", "90", "120"]
                     aspect_ratios = ["16x9", "4x3", "1x1", "9x16"]
                     has_duration = any(dur in creative_lower for dur in duration_values)
                     has_ratio = any(ratio in creative_lower for ratio in aspect_ratios)
-                    if has_duration and has_ratio:
-                        test_case_8 = "PASSED"
-                    else:
-                        test_case_8 = "FAIL"
+                    test_case_8 = "PASSED" if (has_duration and has_ratio) else "FAIL"
                 else:
                     test_case_8 = "N/A"
 
                 # --- TEST CASE #9 ---
-                ##############################################
-                ## VAST AUDIO TYPE IF IT IS: [mp3]
-                ##############################################
+                # mp3 → vastaudio type
                 if creative_lower.endswith(".mp3"):
                     test_case_9 = "PASSED" if ctype == "vastaudio" else "FAIL"
                 else:
                     test_case_9 = "N/A"
 
                 # --- TEST CASE #10 & #11 ---
-                ##############################################
-                ## EXCEPT MP3:
-                ## CLICKTAG should be working
-                ## NO ERROR IN CONSOLE
-                ##############################################
                 last_checked_url = creative_url or ""
                 if creative_lower.endswith(".mp3"):
                     tc10_status = "-"
@@ -877,11 +886,19 @@ def selenium_login(username, password, url, skip_restart=False):
                 # Console row (kept)
                 log(f"{creative_name:50} {creative_id:10} {status_text:10} {test_case_1:8} {test_case_2:20} {test_case_3:15} {test_case_4:20} {test_case_5:20} {test_case_6:15} {test_case_7:30} {test_case_8:30} {test_case_9:20} {tc10_status:10} {tc11_status:10}")
 
-                # GUI pretty row
+                # GUI pretty row (TC keys + pretty labels)
                 cases = {
-                    "1]Creative with QA STATUS": test_case_1, "2]Creative name has PLACEMENT size": test_case_2, "3]": test_case_3, "TC4": test_case_4,
-                    "TC5": test_case_5, "TC6": test_case_6, "TC7": test_case_7, "TC8": test_case_8,
-                    "TC9": test_case_9, "TC10": tc10_status, "TC11": tc11_status
+                    "TC1":  test_case_1,
+                    "TC2":  test_case_2,
+                    "TC3":  test_case_3,
+                    "TC4":  test_case_4,
+                    "TC5":  test_case_5,
+                    "TC6":  test_case_6,
+                    "TC7":  test_case_7,
+                    "TC8":  test_case_8,
+                    "TC9":  test_case_9,
+                    "TC10": tc10_status,
+                    "TC11": tc11_status,
                 }
                 gui_log_result(creative_id, creative_name, cases, last_checked_url)
 
@@ -910,7 +927,6 @@ def selenium_login(username, password, url, skip_restart=False):
         except Exception:
             pass
 
-
 # ---------- GUI ----------
 def submit():
     username = entry_username.get().strip()
@@ -924,38 +940,50 @@ def submit():
     t = threading.Thread(target=selenium_login, args=(username, password, url), daemon=True)
     t.start()
 
-
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("Basefile QA - East Coast")
-root.geometry("900x660")
-root.resizable(True, True)
+screen_width = root.winfo_screenwidth()
+root.geometry("1080x720")
+root.resizable(False, True)
+
+# Detect best fonts available on this machine
+detect_fonts()
+
+# Title bar
+title_frame = tk.Frame(root)
+title_frame.pack(fill="x", pady=(10, 0))
+title_label = tk.Label(title_frame, text="Basefile QA — East Coast", font=TITLE_FONT)
+title_label.pack()
 
 # Inputs container (top)
-content = tk.Frame(root)
-content.place(relx=0.5, rely=0.06, anchor="n")
+content = tk.LabelFrame(root, text="Sign In & Target", font=(UI_FONT[0], 10, "bold"))
+content.pack(fill="x", padx=12, pady=10)
 
-tk.Label(content, text="Username:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-entry_username = tk.Entry(content, width=40)
+tk.Label(content, text="Username:", font=UI_FONT).grid(row=0, column=0, sticky="e", padx=6, pady=6)
+entry_username = tk.Entry(content, width=40, font=UI_FONT)
 entry_username.insert(0, os.getenv("FT_USERNAME", ""))
-entry_username.grid(row=0, column=1, padx=5, pady=5)
+entry_username.grid(row=0, column=1, padx=6, pady=6)
 
-tk.Label(content, text="Password:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-entry_password = tk.Entry(content, show="*", width=40)
+tk.Label(content, text="Password:", font=UI_FONT).grid(row=1, column=0, sticky="e", padx=6, pady=6)
+entry_password = tk.Entry(content, show="*", width=40, font=UI_FONT)
 entry_password.insert(0, os.getenv("FT_PASSWORD", ""))
-entry_password.grid(row=1, column=1, padx=5, pady=5)
+entry_password.grid(row=1, column=1, padx=6, pady=6)
 
-tk.Label(content, text="URL:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
-entry_url = tk.Entry(content, width=60)
+tk.Label(content, text="URL:", font=UI_FONT).grid(row=2, column=0, sticky="e", padx=6, pady=6)
+entry_url = tk.Entry(content, width=60, font=UI_FONT)
 entry_url.insert(0, os.getenv("FT_URL", ""))
-entry_url.grid(row=2, column=1, padx=5, pady=5)
+entry_url.grid(row=2, column=1, padx=6, pady=6)
 
-run_btn = tk.Button(content, text="Run", command=submit, width=20)
+run_btn = tk.Button(content, text="Run", command=submit, width=18, font=(UI_FONT[0], 10, "bold"))
 run_btn.grid(row=3, column=0, columnspan=2, pady=12)
 
 # Pretty Log display (bottom)
-log_text = scrolledtext.ScrolledText(root, state="disabled", wrap="word", font=("Segoe UI", 10))
-log_text.place(relx=0.5, rely=1.0, anchor="s", relwidth=0.95, height=470, x=0, y=-10)
+log_group = tk.LabelFrame(root, text="Execution Report", font=(UI_FONT[0], 10, "bold"))
+log_group.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+log_text = scrolledtext.ScrolledText(log_group, state="disabled", wrap="word", font=MONO_FONT)
+log_text.pack(fill="both", expand=True, padx=10, pady=10)
 gui_init_tags()
 _gui_write("✨ Results will be summarized here as each creative is processed.\n\n", "dim")
 
