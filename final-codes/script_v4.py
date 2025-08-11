@@ -211,6 +211,31 @@ def focus_app_window():
         log(f"⚠️ Could not refocus GUI: {e}")
 
 # ---------- Browser Bootstrap Helpers ----------
+
+def _strip_webdrivers_from_path():
+    """
+    Cross-platform: remove any PATH entries that contain a webdriver binary.
+    Prevents stale chromedriver/msedgedriver from shadowing Selenium Manager.
+    """
+    try:
+        names = {"chromedriver", "chromedriver.exe", "msedgedriver", "msedgedriver.exe"}
+        parts = os.environ.get("PATH", "").split(os.pathsep)
+        cleaned = []
+        removed = []
+        for p in parts:
+            try:
+                if any(os.path.exists(os.path.join(p, n)) for n in names):
+                    removed.append(p)
+                    continue
+            except Exception:
+                pass
+            cleaned.append(p)
+        if removed:
+            os.environ["PATH"] = os.pathsep.join(cleaned)
+            log(f"🧹 Ignoring stale webdrivers in PATH: {removed}")
+    except Exception:
+        pass
+
 def _find_chrome_binary_windows():
     """Try common Chrome locations on Windows and PATH."""
     candidates = [
@@ -246,6 +271,9 @@ def start_driver():
             driver.quit()
         except Exception:
             pass
+
+    # KEY FIX: strip any stale drivers so Selenium Manager fetches the right one
+    _strip_webdrivers_from_path()
 
     system_name = platform.system()
     log(f"🔍 Detected OS: {system_name}")
