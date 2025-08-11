@@ -32,12 +32,22 @@ driver = None
 _restart_attempts = 0
 _MAX_RESTARTS = 1  # prevent infinite restart loops
 
+# --- Processing mode (set at submit) ---
+PROCESS_ALL = False  # False => QA-only; True => check all
+SUMMARY_PREFIX = "For QA creatives processed: "
+
 # --- GUI refs & fonts (set later) ---
 log_text = None
 root = None
 UI_FONT = ("Segoe UI", 10)
 TITLE_FONT = ("Segoe UI", 13, "bold")
 MONO_FONT = ("Consolas", 10)
+summary_var = None
+check_all_var = None   # tk.BooleanVar
+clear_display_var = None  # tk.BooleanVar
+
+# --- Credentials file ---
+CREDENTIALS_FILE = Path(__file__).resolve().parent / "credentials.txt"
 
 # --- Your exact XPaths (added) ---
 XPATH_PREVIEWS_BTN_SPAN = "/html/body/main/section/div[2]/div[1]/div[2]/div[3]/div[1]/div/button/span"
@@ -87,6 +97,52 @@ def detect_fonts():
         pass
 
 # ------------------------------
+# Credentials loader
+# ------------------------------
+def read_credentials():
+    """
+    Load username/password from credentials.txt if present.
+    Supported formats:
+      - key=value lines (username=..., password=...)
+      - or first non-empty line = username, second = password
+    Env vars FT_USERNAME/FT_PASSWORD are used as fallback/defaults.
+    """
+    user = os.getenv("FT_USERNAME", "")
+    pwd = os.getenv("FT_PASSWORD", "")
+
+    path = Path(os.environ.get("FT_CREDENTIALS_FILE", CREDENTIALS_FILE))
+    try:
+        if path.is_file():
+            first, second = None, None
+            with path.open("r", encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith("#") or line.startswith("//"):
+                        continue
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip().lower()
+                        v = v.strip().strip('"').strip("'")
+                        if k in ("username", "user", "email", "login"):
+                            user = v
+                        elif k in ("password", "pass", "pwd"):
+                            pwd = v
+                    else:
+                        if first is None:
+                            first = line
+                        elif second is None:
+                            second = line
+            if first is not None and user == "":
+                user = first
+            if second is not None and pwd == "":
+                pwd = second
+            log(f"🔐 Loaded credentials from {path}")
+    except Exception as e:
+        log(f"⚠️ Could not read credentials file: {e}")
+
+    return user, pwd
+
+# ------------------------------
 # Pretty GUI log helpers
 # ------------------------------
 def gui_init_tags():
@@ -110,6 +166,10 @@ def gui_init_tags():
                                font=(MONO_FONT[0], 10, "bold"))
         log_text.tag_configure("chip_na", foreground="#4b5563", background="#f3f4f6",
                                font=(MONO_FONT[0], 10, "bold"))
+
+        # Skip chip
+        log_text.tag_configure("chip_skip", foreground="#374151", background="#e5e7eb",
+                               font=(MONO_FONT[0], 10, "bold"))
     except Exception:
         pass
 
@@ -125,6 +185,14 @@ def _gui_write(text, *tags):
             pass
     try:
         root.after(0, _do)
+    except Exception:
+        pass
+
+def _clear_log():
+    try:
+        log_text.configure(state="normal")
+        log_text.delete("1.0", "end")
+        log_text.configure(state="disabled")
     except Exception:
         pass
 
@@ -157,13 +225,8 @@ def _gui_write_link(url_text: str, url_href: str):
     root.after(0, _do)
 
 def gui_log_result(creative_id, creative_name, cases_dict, url):
-    """
-    Pretty block for each creative with aligned labels, colored status chips, and clickable URL.
-    """
-    # Top divider
+    """Detailed block for processed creatives."""
     _gui_write("┄" * 84 + "\n", "divider")
-
-    # Header line
     _gui_write("Creative ID: ", "header")
     _gui_write(str(creative_id or "N/A"), "title")
     if creative_name and creative_name != "[Missing]":
@@ -172,35 +235,49 @@ def gui_log_result(creative_id, creative_name, cases_dict, url):
     else:
         _gui_write("\n",)
 
-    # Test cases (TC1 → TC11)
     ordered_keys = [f"TC{i}" for i in range(1, 12)]
     for key in ordered_keys:
         label_text = CASE_LABELS.get(key, key)
         value = (cases_dict.get(key, "-") or "-")
-        status_for_chip = value
-        if value.strip() == "-":
-            status_for_chip = "N/A"
-
+        status_for_chip = value if value.strip() != "-" else "N/A"
         left = f"  {label_text}: "
-        # align left col (monospace)
         pad = " " * max(0, LEFT_COL_WIDTH - len(label_text))
         _gui_write(left + pad, "label")
         _gui_write_chip(status_for_chip)
         _gui_write("\n")
 
-    # URL line with clickable link
     if url:
         _gui_write("\nDone checking for creative <URL: ", "dim")
         _gui_write_link(url, url)
         _gui_write(">\n", "dim")
     else:
         _gui_write("\nDone checking for creative <URL: N/A>\n", "dim")
+    _gui_write("┄" * 84 + "\n\n", "divider")
 
-    # Bottom divider + spacing
+def gui_log_skip(creative_id, creative_name, status_text, url=None):
+    """Compact block for rows skipped in QA-only mode."""
+    _gui_write("┄" * 84 + "\n", "divider")
+    _gui_write("Creative ID: ", "header")
+    _gui_write(str(creative_id or "N/A"), "title")
+    if creative_name and creative_name != "[Missing]":
+        _gui_write("   •   Name: ", "header")
+        _gui_write(creative_name + "\n", "name")
+    else:
+        _gui_write("\n",)
+
+    _gui_write("  Status: ", "label")
+    _gui_write(status_text or "N/A")
+    _gui_write("\n  Result: ", "label")
+    _gui_write("  NO FOR QA  ", "chip_skip")
+    _gui_write(" — skipped (QA-only mode)\n")
+
+    if url:
+        _gui_write("  Link: ", "label")
+        _gui_write_link(url, url)
+        _gui_write("\n")
     _gui_write("┄" * 84 + "\n\n", "divider")
 
 def focus_app_window():
-    """Bring the Tk window to the front and give it focus."""
     try:
         root.deiconify()
         root.lift()
@@ -211,22 +288,16 @@ def focus_app_window():
         log(f"⚠️ Could not refocus GUI: {e}")
 
 # ---------- Browser Bootstrap Helpers ----------
-
 def _strip_webdrivers_from_path():
-    """
-    Cross-platform: remove any PATH entries that contain a webdriver binary.
-    Prevents stale chromedriver/msedgedriver from shadowing Selenium Manager.
-    """
+    """Remove PATH entries that contain a webdriver binary (cross-platform)."""
     try:
         names = {"chromedriver", "chromedriver.exe", "msedgedriver", "msedgedriver.exe"}
         parts = os.environ.get("PATH", "").split(os.pathsep)
-        cleaned = []
-        removed = []
+        cleaned, removed = [], []
         for p in parts:
             try:
                 if any(os.path.exists(os.path.join(p, n)) for n in names):
-                    removed.append(p)
-                    continue
+                    removed.append(p); continue
             except Exception:
                 pass
             cleaned.append(p)
@@ -237,7 +308,6 @@ def _strip_webdrivers_from_path():
         pass
 
 def _find_chrome_binary_windows():
-    """Try common Chrome locations on Windows and PATH."""
     candidates = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -250,7 +320,6 @@ def _find_chrome_binary_windows():
     return None
 
 def _apply_common_options(opts):
-    """Hardened default flags that work well in CI/desktops."""
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
@@ -260,27 +329,19 @@ def _apply_common_options(opts):
     return opts
 
 def start_driver():
-    """
-    Start a Chrome session using Selenium Manager (auto driver),
-    falling back to Edge if Chrome fails. Avoids hardcoded driver paths.
-    """
+    """Start a Chrome session via Selenium Manager, fallback to Edge."""
     global driver
-
     if driver:
         try:
             driver.quit()
         except Exception:
             pass
 
-    # KEY FIX: strip any stale drivers so Selenium Manager fetches the right one
     _strip_webdrivers_from_path()
-
     system_name = platform.system()
     log(f"🔍 Detected OS: {system_name}")
 
-    # --- Try Chrome first ---
     chrome_options = _apply_common_options(ChromeOptions())
-    # Enable browser console logs for TC11
     chrome_options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
 
     if system_name == "Windows":
@@ -300,14 +361,11 @@ def start_driver():
     except Exception as e:
         log(f"❌ Chrome failed to start via Selenium Manager: {e}")
 
-    # --- Fallback to Edge ---
     try:
         from selenium.webdriver import EdgeOptions
         from selenium.webdriver.edge.service import Service as EdgeService
-
         edge_options = _apply_common_options(EdgeOptions())
         edge_options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
-
         driver = webdriver.Edge(service=EdgeService(), options=edge_options)
         driver.set_page_load_timeout(30)
         driver.implicitly_wait(10)
@@ -316,10 +374,7 @@ def start_driver():
     except Exception as e2:
         log(f"❌ Edge fallback failed: {e2}")
 
-    raise RuntimeError(
-        "Unable to start a WebDriver session. Ensure Chrome or Edge is installed "
-        "and that this environment allows Selenium Manager to fetch drivers."
-    )
+    raise RuntimeError("Unable to start a WebDriver session.")
 
 def restart_driver(username, password, url):
     global _restart_attempts
@@ -330,16 +385,25 @@ def restart_driver(username, password, url):
     start_driver()
     return selenium_login(username, password, url, skip_restart=True)
 
+# ---- Auto-close helper ----
+def close_browser():
+    global driver
+    try:
+        if driver:
+            driver.quit()
+            log("🔚 Browser closed.")
+    except Exception as e:
+        log(f"ℹ️ Could not close browser cleanly: {e}")
+    finally:
+        driver = None
+
 # ---------- UX Helpers ----------
 def real_chrome_zoom_out():
-    """Maximize window and send real OS-level Cmd/Ctrl + '-' to the browser."""
     try:
         pyautogui.FAILSAFE = False
         driver.maximize_window()
         log("🖥️ Browser window maximized")
         time.sleep(1)
-        time.sleep(1)
-
         for _ in range(8):
             if platform.system() == "Darwin":
                 pyautogui.hotkey("command", "-")
@@ -351,7 +415,6 @@ def real_chrome_zoom_out():
         log(f"⚠️ Could not zoom out browser: {e}")
 
 def reset_zoom():
-    """Restore browser zoom to 100% (OS-level)."""
     try:
         if platform.system() == "Darwin":
             pyautogui.hotkey("command", "0")
@@ -371,10 +434,6 @@ def _scroll_into_view(el):
         pass
 
 def _click_checkbox_in_row(row):
-    """
-    Try several strategies to click the row's checkbox (left-most column in Innovid grid).
-    Returns True if a click was attempted successfully, else False.
-    """
     try:
         cb = row.find_element(By.CSS_SELECTOR, "input[type='checkbox']")
         _scroll_into_view(cb)
@@ -382,7 +441,6 @@ def _click_checkbox_in_row(row):
         return True
     except Exception:
         pass
-
     try:
         toggle = row.find_element(By.CSS_SELECTOR, "label, [role='checkbox'], .checkbox, .check")
         _scroll_into_view(toggle)
@@ -390,7 +448,6 @@ def _click_checkbox_in_row(row):
         return True
     except Exception:
         pass
-
     try:
         first_cell = row.find_elements(By.CSS_SELECTOR, ".react-grid-Cell")[0]
         _scroll_into_view(first_cell)
@@ -398,7 +455,6 @@ def _click_checkbox_in_row(row):
         return True
     except Exception:
         pass
-
     return False
 
 def _safe_click(el):
@@ -421,21 +477,13 @@ def _safe_click(el):
                 return False
 
 def _open_preview_for_selected():
-    """
-    Click 'Previews' → 'Preview Creative (Private)' and switch to the new tab.
-    Uses several resilient strategies and retries. Returns the preview tab handle.
-    """
     handles_before = set(driver.window_handles)
-
-    # Previews button locators
     preview_btn_locators = [
         (By.XPATH, XPATH_PREVIEWS_BTN_SPAN + "/ancestor::button[1]"),
         (By.XPATH, "(//button[.//span[normalize-space()='Previews']])[1]"),
         (By.XPATH, "//div[contains(@class,'toolbar') or contains(@class,'bulk') or contains(@class,'button-side')]//button[.//span[contains(normalize-space(),'Previews')]]"),
         (By.XPATH, "//button[contains(normalize-space(.), 'Previews')]"),
     ]
-
-    # Menu container & item
     menu_container_xpath = ("//nav[contains(@class,'react-contextmenu') and "
                             "(contains(@class,'is-open') or contains(@class,'react-contextmenu--visible') or @style[contains(.,'opacity: 1')])]")
     menu_item_locators = [
@@ -443,8 +491,6 @@ def _open_preview_for_selected():
         (By.XPATH, menu_container_xpath + "//div[contains(@class,'react-contextmenu-item') and not(contains(@class,'disabled'))][.//span[contains(normalize-space(),'Preview Creative')]]"),
         (By.XPATH, "//span[contains(normalize-space(),'Preview Creative')]"),
     ]
-
-    # Click Previews button (retries)
     previews_clicked = False
     for _ in range(3):
         btn = None
@@ -456,7 +502,6 @@ def _open_preview_for_selected():
                 continue
         if not btn:
             continue
-
         if _safe_click(btn):
             try:
                 WebDriverWait(driver, 6).until(EC.visibility_of_element_located((By.XPATH, menu_container_xpath)))
@@ -465,11 +510,8 @@ def _open_preview_for_selected():
             except Exception:
                 time.sleep(0.2)
                 continue
-
     if not previews_clicked:
         raise TimeoutException("Could not open 'Previews' menu.")
-
-    # Click the 'Preview Creative' item
     item = None
     for by, sel in menu_item_locators:
         try:
@@ -479,11 +521,8 @@ def _open_preview_for_selected():
             continue
     if not item:
         raise TimeoutException("Menu item 'Preview Creative' not found/clickable.")
-
     if not _safe_click(item):
         raise TimeoutException("Failed to click 'Preview Creative'.")
-
-    # Switch to new preview tab
     WebDriverWait(driver, 15).until(lambda d: len(d.window_handles) > len(handles_before))
     preview_handle = [h for h in driver.window_handles if h not in handles_before][-1]
     driver.switch_to.window(preview_handle)
@@ -495,8 +534,7 @@ def _get_largest_iframe():
     iframes = driver.find_elements(By.TAG_NAME, "iframe")
     if not iframes:
         return None
-    largest = None
-    largest_area = -1
+    largest, largest_area = None, -1
     for f in iframes:
         try:
             rect = driver.execute_script(
@@ -511,15 +549,8 @@ def _get_largest_iframe():
     return largest
 
 def _click_creative_in_preview():
-    """
-    In the Preview tab, click the anchor inside iframe#ad to open the click-through.
-    Returns (detected_standard_clicktag: bool, click_tab_handle or None).
-    """
     reset_zoom(); time.sleep(0.2)
-
     handles_before = set(driver.window_handles)
-
-    # Enter the preview iframe
     try:
         try:
             frame = WebDriverWait(driver, 6).until(
@@ -530,8 +561,6 @@ def _click_creative_in_preview():
             if not frame:
                 raise TimeoutException("Preview iframe not found")
         driver.switch_to.frame(frame)
-
-        # Anchor to click (prefer /clicktag/)
         try:
             anchor = WebDriverWait(driver, 6).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/clicktag']"))
@@ -540,7 +569,6 @@ def _click_creative_in_preview():
             anchors = driver.find_elements(By.CSS_SELECTOR, "a[target='_blank'], a[href]")
             if not anchors:
                 raise TimeoutException("No anchor elements found in preview")
-            # choose the largest
             best, area = None, -1
             for a in anchors:
                 try:
@@ -551,13 +579,11 @@ def _click_creative_in_preview():
                 except Exception:
                     pass
             anchor = best or anchors[0]
-
         href = anchor.get_attribute("href")
         try:
             _scroll_into_view(anchor)
         except Exception:
             pass
-
         opened = False
         try:
             ActionChains(driver).move_to_element(anchor).pause(0.05).click(anchor).perform()
@@ -570,22 +596,16 @@ def _click_creative_in_preview():
                 opened = True
             except Exception:
                 pass
-
         if not opened and href:
             driver.execute_script("window.open(arguments[0], '_blank');", href)
             WebDriverWait(driver, 6).until(lambda d: len(d.window_handles) > len(handles_before))
-
     finally:
         driver.switch_to.default_content()
-
-    # Switch to the new tab
     click_handle = [h for h in driver.window_handles if h not in handles_before]
     click_handle = click_handle[-1] if click_handle else None
     if click_handle:
         driver.switch_to.window(click_handle)
         WebDriverWait(driver, 15).until(lambda d: d.execute_script("return document.readyState") == "complete")
-
-    # Detect "Standard click tag"
     detected = False
     if click_handle:
         try:
@@ -596,17 +616,11 @@ def _click_creative_in_preview():
             detected = True
         except Exception:
             detected = False
-
     log(f"{'✅' if detected else '❌'} ClickTag page {'detected' if detected else 'not detected'}."
         f" Title={driver.title!r}, URL={driver.current_url}")
     return detected, click_handle
 
 def _check_preview_console_errors():
-    """
-    Read browser console logs in the *Preview* tab and only flag errors that
-    originate from the ad iframe (e.g., https://api.flashtalking.net/lcrp/tia/...).
-    Returns (has_errors: bool, errors: list[str]).
-    """
     allowed_patterns = []
     try:
         frame = WebDriverWait(driver, 5).until(
@@ -615,28 +629,18 @@ def _check_preview_console_errors():
         src = (frame.get_attribute("src") or "").strip()
         if src:
             u = urlparse(src)
-            allowed_patterns = [
-                f"{u.scheme}://{u.netloc}/lcrp/",
-                u.netloc,
-            ]
+            allowed_patterns = [f"{u.scheme}://{u.netloc}/lcrp/", u.netloc]
     except Exception:
         return False, []
-
     ignore_substrings = [
-        "/crm/v1/user",
-        "/int/v1/ui/creative-libraries",
-        "grafana/faro-web-sdk",
-        "Problem Starting up Pendo",
-        "DEPRECATED_ENDPOINT",
-        "SharedImageManager::ProduceMemory",
+        "/crm/v1/user", "/int/v1/ui/creative-libraries", "grafana/faro-web-sdk",
+        "Problem Starting up Pendo", "DEPRECATED_ENDPOINT", "SharedImageManager::ProduceMemory",
     ]
-
     try:
         _ = driver.get_log('browser')
     except Exception:
         pass
     time.sleep(0.15)
-
     errors = []
     try:
         logs = driver.get_log('browser')
@@ -652,21 +656,21 @@ def _check_preview_console_errors():
             errors.append(f"[{lvl}] {msg}")
     except Exception as e:
         log(f"ℹ️ Console logs not available: {e}")
-
     return (len(errors) > 0), errors
 
 # ---------- Main Selenium Flow ----------
 def selenium_login(username, password, url, skip_restart=False):
-    """
-    Navigate to the given URL, perform login, scan grid, and print checks.
-    """
-    global driver
+    """Navigate, login, scan grid, run checks."""
+    global driver, SUMMARY_PREFIX
     try:
         if not skip_restart:
             start_driver()
-
         log(f"🌐 Navigating to URL: {url}")
         driver.get(url)
+
+        qa_only = not PROCESS_ALL
+        processed_count = 0
+        expected_total = 0
 
         # --- Login ---
         try:
@@ -678,10 +682,8 @@ def selenium_login(username, password, url, skip_restart=False):
             log(f"🔐 Login attempted for user: {username}")
 
             WebDriverWait(driver, 20).until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".status-label.in-approved"))
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".react-grid-Row"))
             )
-            approved_elements = driver.find_elements(By.CSS_SELECTOR, ".status-label.in-approved")
-            log(f"✅ Total 'in-approved' rows found: {len(approved_elements)}")
 
             real_chrome_zoom_out()
 
@@ -698,11 +700,9 @@ def selenium_login(username, password, url, skip_restart=False):
                     if new_height == last_height:
                         break
                     last_height = new_height
-                log("📜 Finished vertical scroll, all rows loaded.")
-
                 driver.execute_script("arguments[0].scrollLeft = arguments[0].scrollWidth", scrollable_div)
                 time.sleep(0.5)
-                log("➡️ Finished horizontal scroll, all columns revealed.")
+                log("📜 All rows loaded and columns revealed.")
             except Exception as e:
                 log(f"⚠️ Could not complete scrolling: {e}")
 
@@ -718,13 +718,30 @@ def selenium_login(username, password, url, skip_restart=False):
                 col_index_map[col_name] = i
         log(f"📊 Detected columns: {col_index_map}")
 
-        # Console table header
-        log("\n🧪 Results Table")
-        log(f"{'Creative Name':50} {'ID':10} {'Status':10} {'TC1':8} {'TC2':20} {'TC3':15} {'TC4':20} {'TC5':20} {'TC6':15} {'TC7':30} {'TC8':30} {'TC9':20} {'TC10':10} {'TC11':10}")
-        log("-" * 285)
-
+        # Fetch rows and compute expected count based on mode
         rows = driver.find_elements(By.CSS_SELECTOR, "div.react-grid-Row")
 
+        def status_of(row):
+            try:
+                cells = row.find_elements(By.CSS_SELECTOR, ".react-grid-Cell")
+                return cells[col_index_map.get("status", 0)].text.strip()
+            except Exception:
+                return ""
+
+        if qa_only:
+            expected_total = sum(1 for r in rows if "qa" in status_of(r).lower())
+            SUMMARY_PREFIX = "For QA creatives processed: "
+        else:
+            expected_total = len(rows)
+            SUMMARY_PREFIX = "Creatives processed: "
+        _set_summary(processed_count, expected_total)
+
+        # Console header
+        log("\n🧪 Results Table")
+        log(f"{'Creative Name':50} {'ID':10} {'Status':12} {'TC1':8} {'TC2':20} {'TC3':15} {'TC4':20} {'TC5':20} {'TC6':15} {'TC7':30} {'TC8':30} {'TC9':20} {'TC10':10} {'TC11':10}")
+        log("-" * 290)
+
+        # Iterate
         for idx, row in enumerate(rows):
             try:
                 cells = row.find_elements(By.CSS_SELECTOR, ".react-grid-Cell")
@@ -743,6 +760,12 @@ def selenium_login(username, password, url, skip_restart=False):
 
                 # Status
                 status_text = cells[col_index_map.get("status", 0)].text.strip() if "status" in col_index_map else "[Missing]"
+                is_for_qa = "for qa" in status_text.lower() or status_text.strip().lower() == "qa"
+
+                # If QA-only mode and not FOR QA → skip with compact note
+                if qa_only and not is_for_qa:
+                    gui_log_skip(creative_id, creative_name, status_text, creative_url or None)
+                    continue
 
                 # Placement Size
                 if "placement size" in col_index_map:
@@ -758,25 +781,18 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     creative_type = "[Missing]"
 
-                # --- TEST CASE #1 ---
-                # ONLY THOSE CREATIVE WHOSE STATUS IS "FOR QA"
-                test_case_1 = "PASSED" if "approved" in status_text.lower() else "FAIL"
+                # --- TEST CASES ---
+                test_case_1 = "PASSED" if is_for_qa else "FAIL"
 
-                # --- TEST CASE #2 ---
-                # CREATIVE NAME MUST CONTAIN PLACEMENT SIZE for alt image / html_onpage / html_expand / html_standard
                 placement_required_types = ["alt image", "html_onpage", "html_expand", "html_standard"]
                 if placement_size != "0x0" and creative_type.lower() in placement_required_types:
                     test_case_2 = "PASSED" if placement_size in creative_name.replace(" ", "") else "FAIL"
                 else:
                     test_case_2 = "PASSED"
 
-                # --- TEST CASE #3 ---
-                # CREATIVE NAME MUST CONTAIN FILE FORMAT AS SUFFIX
                 valid_formats = [".jpg", ".jpeg", ".png", ".gif", ".mp3", ".mp4"]
                 test_case_3 = "PASSED" if any(creative_name.lower().endswith(fmt) for fmt in valid_formats) else "FAIL"
 
-                # --- TEST CASE #4 ---
-                # TYPE MUST MATCH EXTENSION
                 creative_lower = creative_name.lower()
                 image_exts = [".png", ".jpg", ".gif"]
                 ctype = creative_type.lower().replace(" ", "")
@@ -789,13 +805,10 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_4 = "N/A"
 
-                # --- TEST CASE #5 ---
-                # BASE FILE SIZE ≤ 600KB (except preroll & vastaudio)
                 try:
                     if "base file size" in col_index_map:
                         bfs_col_idx = col_index_map["base file size"]
                         size_text = cells[bfs_col_idx].text.strip().lower()
-
                         size_kb = 0.0
                         if "mb" in size_text:
                             size_kb = float(size_text.replace("mb", "").strip()) * 1024
@@ -806,7 +819,6 @@ def selenium_login(username, password, url, skip_restart=False):
                                 size_kb = float(size_text)
                             except Exception:
                                 size_kb = 0.0
-
                         if ctype in ["preroll", "vastaudio"]:
                             test_case_5 = "PASSED"
                         else:
@@ -816,20 +828,14 @@ def selenium_login(username, password, url, skip_restart=False):
                 except Exception:
                     test_case_5 = "FAIL"
 
-                # --- TEST CASE #6 ---
-                # 1x1 → auto approve
                 test_case_6 = "PASSED" if placement_size.lower() == "1x1" else "N/A"
 
-                # --- TEST CASE #7 ---
-                # Creative name matches file name column
                 try:
                     file_name_col = cells[col_index_map["file name"]].text.strip() if "file name" in col_index_map else ""
                     test_case_7 = "PASSED" if creative_name.lower() == file_name_col.lower() else "FAIL"
                 except Exception:
                     test_case_7 = "FAIL"
 
-                # --- TEST CASE #8 ---
-                # Duration & aspect ratio in filename for preroll/vastaudio
                 if ctype in ["preroll", "vastaudio"]:
                     duration_values = ["6", "10", "15", "20", "30", "60", "90", "120"]
                     aspect_ratios = ["16x9", "4x3", "1x1", "9x16"]
@@ -839,14 +845,11 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_8 = "N/A"
 
-                # --- TEST CASE #9 ---
-                # mp3 → vastaudio type
                 if creative_lower.endswith(".mp3"):
                     test_case_9 = "PASSED" if ctype == "vastaudio" else "FAIL"
                 else:
                     test_case_9 = "N/A"
 
-                # --- TEST CASE #10 & #11 ---
                 last_checked_url = creative_url or ""
                 if creative_lower.endswith(".mp3"):
                     tc10_status = "-"
@@ -854,10 +857,8 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     tc10_status = "-"
                     tc11_status = "-"
-
                     reset_zoom()
                     clicked = _click_checkbox_in_row(row)
-
                     if clicked:
                         root_handle = driver.current_window_handle
                         preview_handle = None
@@ -868,34 +869,28 @@ def selenium_login(username, password, url, skip_restart=False):
                                 last_checked_url = driver.current_url
                             except Exception:
                                 pass
-
                             has_errors, errs = _check_preview_console_errors()
+                            tc11_status = "FAIL" if has_errors else "PASSED"
                             if has_errors:
-                                tc11_status = "FAIL"
                                 log("❌ TC11 console errors detected:")
                                 for e in errs[:10]:
                                     log("    " + e[:500])
                             else:
-                                tc11_status = "PASSED"
                                 log("✅ TC11: No console errors detected in Preview.")
-
                             detected, click_handle = _click_creative_in_preview()
                             tc10_status = "PASSED" if detected else "FAIL"
                             log(f"TC10 ClickTag: {tc10_status}")
-
                         except Exception as e:
                             log(f"⚠️ TC10/11 preview flow error: {e}")
                         finally:
                             try:
                                 if click_handle and click_handle in driver.window_handles:
-                                    driver.switch_to.window(click_handle)
-                                    driver.close()
+                                    driver.switch_to.window(click_handle); driver.close()
                             except Exception:
                                 pass
                             try:
                                 if preview_handle and preview_handle in driver.window_handles:
-                                    driver.switch_to.window(preview_handle)
-                                    driver.close()
+                                    driver.switch_to.window(preview_handle); driver.close()
                             except Exception:
                                 pass
                             try:
@@ -911,28 +906,29 @@ def selenium_login(username, password, url, skip_restart=False):
                     else:
                         tc10_status = "NOT FOUND/CLICKABLE"
 
-                # Console row (kept)
-                log(f"{creative_name:50} {creative_id:10} {status_text:10} {test_case_1:8} {test_case_2:20} {test_case_3:15} {test_case_4:20} {test_case_5:20} {test_case_6:15} {test_case_7:30} {test_case_8:30} {test_case_9:20} {tc10_status:10} {tc11_status:10}")
+                # processed count (either all rows, or only QA rows)
+                processed_count += 1
+                _set_summary(processed_count, expected_total)
 
-                # GUI pretty row (TC keys + pretty labels)
+                # Console row
+                log(f"{creative_name:50} {creative_id:10} {status_text:12} {test_case_1:8} {test_case_2:20} {test_case_3:15} {test_case_4:20} {test_case_5:20} {test_case_6:15} {test_case_7:30} {test_case_8:30} {test_case_9:20} {tc10_status:10} {tc11_status:10}")
+
+                # GUI full row
                 cases = {
-                    "TC1":  test_case_1,
-                    "TC2":  test_case_2,
-                    "TC3":  test_case_3,
-                    "TC4":  test_case_4,
-                    "TC5":  test_case_5,
-                    "TC6":  test_case_6,
-                    "TC7":  test_case_7,
-                    "TC8":  test_case_8,
-                    "TC9":  test_case_9,
-                    "TC10": tc10_status,
-                    "TC11": tc11_status,
+                    "TC1":  test_case_1, "TC2":  test_case_2, "TC3":  test_case_3,
+                    "TC4":  test_case_4, "TC5":  test_case_5, "TC6":  test_case_6,
+                    "TC7":  test_case_7, "TC8":  test_case_8, "TC9":  test_case_9,
+                    "TC10": tc10_status, "TC11": tc11_status,
                 }
                 gui_log_result(creative_id, creative_name, cases, last_checked_url)
 
             except Exception as e:
                 log(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':20} {'FAIL':20} {'FAIL':25} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'-':10} {'-':10}")
                 log(f"⚠️ Row {idx+1} failed: {e}")
+
+        # Done → close browser
+        log(f"🎉 Finished. {SUMMARY_PREFIX}{processed_count}/{expected_total}. Closing browser…")
+        close_browser()
 
     except WebDriverException as e:
         log(f"❌ Selenium issue: {e}. Restarting browser…")
@@ -955,15 +951,33 @@ def selenium_login(username, password, url, skip_restart=False):
         except Exception:
             pass
 
+# --- summary label updater (thread-safe) ---
+def _set_summary(processed: int, expected: int):
+    try:
+        root.after(0, lambda: summary_var.set(f"{SUMMARY_PREFIX}{processed} / {expected}"))
+    except Exception:
+        pass
+
 # ---------- GUI ----------
 def submit():
+    global PROCESS_ALL, SUMMARY_PREFIX
     username = entry_username.get().strip()
     password = entry_password.get().strip()
     url = entry_url.get().strip()
+    PROCESS_ALL = bool(check_all_var.get())
+    SUMMARY_PREFIX = "Creatives processed: " if PROCESS_ALL else "For QA creatives processed: "
 
     if not username or not password or not url:
         messagebox.showwarning("Input Error", "Please fill in all fields.")
         return
+
+    # Clear display if requested
+    if bool(clear_display_var.get()):
+        _clear_log()
+        _gui_write("✨ Results will be summarized here as each creative is processed.\n\n", "dim")
+
+    # reset summary at start
+    _set_summary(0, 0)
 
     t = threading.Thread(target=selenium_login, args=(username, password, url), daemon=True)
     t.start()
@@ -971,7 +985,6 @@ def submit():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("Basefile QA - East Coast")
-screen_width = root.winfo_screenwidth()
 root.geometry("1080x720")
 root.resizable(False, True)
 
@@ -984,31 +997,55 @@ title_frame.pack(fill="x", pady=(10, 0))
 title_label = tk.Label(title_frame, text="Basefile QA — East Coast", font=TITLE_FONT)
 title_label.pack()
 
-# Inputs container (top)
-content = tk.LabelFrame(root, text="Sign In & Target", font=(UI_FONT[0], 10, "bold"))
-content.pack(fill="x", padx=12, pady=10)
+# ---- Centered form (does not expand full width) ----
+form_wrapper = tk.Frame(root)
+form_wrapper.pack(pady=10)
 
-tk.Label(content, text="Username:", font=UI_FONT).grid(row=0, column=0, sticky="e", padx=6, pady=6)
+content = tk.LabelFrame(form_wrapper, text="Sign In & Target", font=(UI_FONT[0], 10, "bold"), padx=12, pady=10)
+content.pack()
+
+tk.Label(content, text="Username:", font=UI_FONT).grid(row=0, column=0, sticky="e", padx=8, pady=6)
 entry_username = tk.Entry(content, width=40, font=UI_FONT)
-entry_username.insert(0, os.getenv("FT_USERNAME", ""))
-entry_username.grid(row=0, column=1, padx=6, pady=6)
+entry_username.grid(row=0, column=1, padx=8, pady=6)
 
-tk.Label(content, text="Password:", font=UI_FONT).grid(row=1, column=0, sticky="e", padx=6, pady=6)
+tk.Label(content, text="Password:", font=UI_FONT).grid(row=1, column=0, sticky="e", padx=8, pady=6)
 entry_password = tk.Entry(content, show="*", width=40, font=UI_FONT)
-entry_password.insert(0, os.getenv("FT_PASSWORD", ""))
-entry_password.grid(row=1, column=1, padx=6, pady=6)
+entry_password.grid(row=1, column=1, padx=8, pady=6)
 
-tk.Label(content, text="URL:", font=UI_FONT).grid(row=2, column=0, sticky="e", padx=6, pady=6)
+tk.Label(content, text="URL:", font=UI_FONT).grid(row=2, column=0, sticky="e", padx=8, pady=6)
 entry_url = tk.Entry(content, width=60, font=UI_FONT)
-entry_url.insert(0, os.getenv("FT_URL", ""))
-entry_url.grid(row=2, column=1, padx=6, pady=6)
+entry_url.grid(row=2, column=1, padx=8, pady=6)
 
-run_btn = tk.Button(content, text="Run", command=submit, width=18, font=(UI_FONT[0], 10, "bold"))
-run_btn.grid(row=3, column=0, columnspan=2, pady=12)
+# Checkbox: Check all (uncheck = QA only)
+check_all_var = tk.BooleanVar(value=False)
+check_all_cb = tk.Checkbutton(content, text="Check all? (uncheck = QA only)", variable=check_all_var, onvalue=True, offvalue=False, font=UI_FONT)
+check_all_cb.grid(row=3, column=0, columnspan=2, pady=(6, 2))
+
+# Checkbox: Clear display each run
+clear_display_var = tk.BooleanVar(value=True)
+clear_cb = tk.Checkbutton(content, text="Clear display (on each run)", variable=clear_display_var, onvalue=True, offvalue=False, font=UI_FONT)
+clear_cb.grid(row=4, column=0, columnspan=2, pady=(0, 6))
+
+# Prefill from env/credentials
+_loaded_user, _loaded_pass = read_credentials()
+entry_username.insert(0, os.getenv("FT_USERNAME", _loaded_user))
+entry_password.insert(0, os.getenv("FT_PASSWORD", _loaded_pass))
+entry_url.insert(0, os.getenv("FT_URL", ""))
+
+# centered Run button
+run_btn = tk.Button(content, text="Run", command=submit, font=(UI_FONT[0], 10, "bold"))
+run_btn.grid(row=5, column=0, columnspan=2, pady=10)
 
 # Pretty Log display (bottom)
 log_group = tk.LabelFrame(root, text="Execution Report", font=(UI_FONT[0], 10, "bold"))
 log_group.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+# Summary label at the top of results
+summary_var = tk.StringVar(value="For QA creatives processed: 0 / 0")
+summary_frame = tk.Frame(log_group)
+summary_frame.pack(fill="x", padx=10, pady=(8, 0))
+summary_label = tk.Label(summary_frame, textvariable=summary_var, anchor="w", font=(UI_FONT[0], 10, "bold"))
+summary_label.pack(side="left")
 
 log_text = scrolledtext.ScrolledText(log_group, state="disabled", wrap="word", font=MONO_FONT)
 log_text.pack(fill="both", expand=True, padx=10, pady=10)
