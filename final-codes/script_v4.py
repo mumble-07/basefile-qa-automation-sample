@@ -105,7 +105,7 @@ def gui_log_result(creative_id, creative_name, cases_dict, url):
     else:
         _gui_write("\n",)
 
-    # Body (TC1..TC11 in order)
+    # Body (TEST CASE #1 TO TEST CASE #11 in order)
     ordered_keys = [f"TC{i}" for i in range(1, 12)]
     for key in ordered_keys:
         value = cases_dict.get(key, "-")
@@ -683,10 +683,17 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     creative_type = "[Missing]"
 
-                # --- TC1 ---
+                # --- TEST CASE #1 ---
+                ##############################################
+                ## ONLY THOSE CREATIVE WHOSE STATUS IS "FOR QA"
+                ##############################################
                 test_case_1 = "PASSED" if "approved" in status_text.lower() else "FAIL"
 
-                # --- TC2 ---
+                # --- TEST CASE #2 ---
+                ##############################################
+                ## CREATIVE NAME MUST CONTAIN PLACEMENT SIZE FOR FORMATS:
+                ## alt image, html_onpage, html_expand, html_standard
+                ##############################################
                 placement_required_types = ["alt image", "html_onpage", "html_expand", "html_standard"]
                 if placement_size != "0x0" and creative_type.lower() in placement_required_types:
                     if placement_size in creative_name.replace(" ", ""):
@@ -696,11 +703,19 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_2 = f"PASSED"
 
-                # --- TC3 ---
+                # --- TEST CASE #3 ---
+                ##############################################
+                ## CREATIVE NAME MUST CONTAIN FILE FORMAT AS SUFFIX
+                ##############################################
                 valid_formats = [".jpg", ".jpeg", ".png", ".gif", ".mp3", ".mp4"]
                 test_case_3 = "PASSED" if any(creative_name.lower().endswith(fmt) for fmt in valid_formats) else "FAIL"
 
-                # --- TC4 ---
+                # --- TEST CASE #4 ---
+                ##############################################
+                ## ALT IMAGE IF CREATIVE IS: [png, jpg, gif]
+                ## PREROLL IF CREATIVE IS: [mp4]
+                ## HTML_STANDARD, HTML_ONPAGE IF CREATIVE IS: [zip]
+                ##############################################
                 creative_lower = creative_name.lower()
                 image_exts = [".png", ".jpg", ".gif"]
                 ctype = creative_type.lower().replace(" ", "")
@@ -713,7 +728,11 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_4 = "N/A"
 
-                # --- TC5 ---
+                # --- TEST CASE #5 ---
+                ##############################################
+                ## BASE FILE SIZE MUST BE LESS THAN 600KB
+                ## EXCEPT FOR PREROLL & VAST AUDIO
+                ##############################################
                 try:
                     if "base file size" in col_index_map:
                         bfs_col_idx = col_index_map["base file size"]
@@ -739,17 +758,31 @@ def selenium_login(username, password, url, skip_restart=False):
                 except Exception:
                     test_case_5 = "FAIL"
 
-                # --- TC6 ---
+                # --- TEST CASE #6 ---
+                ##############################################
+                ## PLACEMENT SIZE IS: 1x1
+                ## AUTO APPROVE!
+                ##############################################
                 test_case_6 = "PASSED" if placement_size.lower() == "1x1" else "N/A"
 
-                # --- TC7 ---
+                # --- TEST CASE #7 ---
+                ##############################################
+                ## CREATIVE NAME IS SAME WITH FILE NAME
+                ##############################################
                 try:
                     file_name_col = cells[col_index_map["file name"]].text.strip() if "file name" in col_index_map else ""
                     test_case_7 = "PASSED" if creative_name.lower() == file_name_col.lower() else "FAIL"
                 except Exception:
                     test_case_7 = "FAIL"
 
-                # --- TC8 ---
+                # --- TEST CASE #8 ---
+                ##############################################
+                ## FOR PREROLL & VAST AUDIO:
+                ## CREATIVE FILE NAME USUALLY HAS: DURATION & ASPECT RATIO
+                ## EXAMPLE: 15_16x9-0TT.mp4
+                ## > 15 video duration
+                ## > 16x9 ratio [1920x1080px]
+                ##############################################
                 if ctype in ["preroll", "vastaudio"]:
                     duration_values = ["6", "10", "15", "20", "30", "60", "90", "120"]
                     aspect_ratios = ["16x9", "4x3", "1x1", "9x16"]
@@ -762,13 +795,21 @@ def selenium_login(username, password, url, skip_restart=False):
                 else:
                     test_case_8 = "N/A"
 
-                # --- TC9 ---
+                # --- TEST CASE #9 ---
+                ##############################################
+                ## VAST AUDIO TYPE IF IT IS: [mp3]
+                ##############################################
                 if creative_lower.endswith(".mp3"):
                     test_case_9 = "PASSED" if ctype == "vastaudio" else "FAIL"
                 else:
                     test_case_9 = "N/A"
 
-                # --- TC10 & TC11 ---
+                # --- TEST CASE #10 & #11 ---
+                ##############################################
+                ## EXCEPT MP3:
+                ## CLICKTAG should be working
+                ## NO ERROR IN CONSOLE
+                ##############################################
                 last_checked_url = creative_url or ""
                 if creative_lower.endswith(".mp3"):
                     tc10_status = "-"
