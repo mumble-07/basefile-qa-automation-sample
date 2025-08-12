@@ -609,6 +609,7 @@ def _open_preview_for_selected():
     ]
     menu_container_xpath = ("//nav[contains(@class,'react-contextmenu') and "
                             "(contains(@class,'is-open') or contains(@class,'react-contextmenu--visible') or @style[contains(.,'opacity: 1')])]")
+
     menu_item_locators = [
         (By.XPATH, XPATH_PREVIEW_CREATIVE_PRIVATE),
         (By.XPATH, menu_container_xpath + "//div[contains(@class,'react-contextmenu-item') and not(contains(@class,'disabled'))][.//span[contains(normalize-space(),'Preview Creative')]]"),
@@ -677,6 +678,96 @@ def _find_global_click_anchor():
         return driver.find_element(By.CSS_SELECTOR, "a[href*='/clicktag']")
     except Exception:
         return None
+
+# ---------- TC7 helpers (robust text + normalization) ----------
+def _get_visible_text(el):
+    """Prefer title, then real textContent; keeps case."""
+    if el is None:
+        return ""
+    try:
+        t = el.get_attribute("title")
+        if t:
+            return t
+    except Exception:
+        pass
+    try:
+        return driver.execute_script("return arguments[0].textContent || '';", el).strip()
+    except Exception:
+        pass
+    try:
+        return (el.text or "").strip()
+    except Exception:
+        return ""
+
+def _clean_text_case_sensitive(s: str) -> str:
+    """Trim + normalize only odd whitespace; DO NOT change case."""
+    if s is None:
+        return ""
+    # replace NBSP and zero-width chars, keep case
+    s = s.replace("\xa0", " ").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "")
+    # collapse runs of whitespace to a single space
+    s = " ".join(s.split())
+    return s.strip()
+
+def _get_cell_by_header(row, col_index_map, header_name):
+    """Find cell using aria-colindex (1-based) so virtualization doesn’t trick us."""
+    idx = col_index_map.get(header_name.lower())
+    if idx is None:
+        return None
+    try:
+        cell = row.find_element(
+            By.XPATH,
+            f".//div[contains(@class,'react-grid-Cell')][@aria-colindex={idx+1}]"
+        )
+        return cell
+    except Exception:
+        try:
+            cells = row.find_elements(By.CSS_SELECTOR, ".react-grid-Cell")
+            if 0 <= idx < len(cells):
+                return cells[idx]
+        except Exception:
+            pass
+    return None
+
+def _extract_filename_from_cell(cell):
+    """Read the full filename from the anchor (title/text)."""
+    if cell is None:
+        return ""
+    try:
+        _scroll_into_view(cell)
+        time.sleep(0.05)
+    except Exception:
+        pass
+    target = cell
+    try:
+        a = cell.find_element(By.CSS_SELECTOR, "a")
+        target = a
+    except Exception:
+        pass
+    return _get_visible_text(target)
+
+
+def _normalize_name(s: str) -> str:
+    import unicodedata, re
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    # strip Unicode “format” chars and known invisibles
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Cf")
+    s = (s.replace("\u00A0", " ")   # NBSP
+           .replace("\u200B", "")   # ZWSP
+           .replace("\u2060", "")   # WORD JOINER
+           .replace("\uFEFF", "")   # BOM
+           .replace("\u00AD", ""))  # SOFT HYPHEN
+    # unify hyphens
+    s = re.sub(r"[\u2010-\u2015]", "-", s)
+    # collapse whitespace
+    s = re.sub(r"\s+", " ", s)
+    return s.strip().lower()
+
+def _strip_ext(s: str) -> str:
+    import re
+    return re.sub(r"\.(zip|mp4|mp3|png|jpe?g|gif)$", "", s, flags=re.I)
 
 # ---------- Click-tag helpers (kept for non-skipped cases) ----------
 def _detect_clicktag_success():
@@ -926,7 +1017,9 @@ def selenium_login(username, password, url, skip_restart=False):
                 creative_url = ""
                 try:
                     name_el = row.find_element(By.CSS_SELECTOR, "span.name-overflow a")
-                    creative_name = name_el.text.strip()
+                    creative_name = _get_visible_text(name_el)
+                    if not creative_name:
+                        creative_name = "[Missing]"
                     creative_url = (name_el.get_attribute("href") or "").strip()
                 except Exception:
                     creative_name = "[Missing]"
@@ -1021,11 +1114,25 @@ def selenium_login(username, password, url, skip_restart=False):
 
                 test_case_6 = "PASSED" if placement_size.lower() == "1x1" else "N/A"
 
+                # --- TEST CASE #7 (CASE-SENSITIVE) ---
                 try:
-                    file_name_col = cells[col_index_map["file name"]].text.strip() if "file name" in col_index_map else ""
-                    test_case_7 = "PASSED" if creative_name.lower() == file_name_col.lower() else "FAIL"
+                    file_cell = _get_cell_by_header(row, col_index_map, "file name")
+                    file_name_col_raw = _extract_filename_from_cell(file_cell)
+
+                    cn = _clean_text_case_sensitive(creative_name)      # keep case
+                    fn = _clean_text_case_sensitive(file_name_col_raw)  # keep case
+
+                    test_case_7 = "PASSED" if (cn == fn) else "FAIL"
+
+                    if test_case_7 == "FAIL":
+                        log("🔎 TC7 mismatch diagnostics:")
+                        log(f"   creative_name raw: {repr(creative_name)}")
+                        log(f"   file_name_col raw: {repr(file_name_col_raw)}")
+                        log(f"   cleaned(crea): {repr(cn)}")
+                        log(f"   cleaned(file): {repr(fn)}")
                 except Exception:
                     test_case_7 = "FAIL"
+
 
                 if ctype in ["preroll", "dynamic_preroll", "vastaudio"]:
                     duration_values = ["6", "10", "15", "20", "30", "60", "90", "120"]
@@ -1042,7 +1149,7 @@ def selenium_login(username, password, url, skip_restart=False):
                     test_case_9 = "N/A"
 
                 # --- Decide preview/click behavior ---
-                # Skip opening preview entirely if: ZIP + (dynamic_preroll/html_onpage/preroll)
+                # Skip opening preview entirely if: ZIP or MP4 + (dynamic_preroll/html_onpage/preroll)
                 skip_preview = (ext in {".zip", ".mp4"} and ctype in {"dynamic_preroll", "html_onpage", "htmlonpage", "preroll"})
                 note = None
 
@@ -1200,7 +1307,7 @@ def submit():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("Basefile QA - East Coast")
-root.geometry("1080x720")
+root.geometry("1200x720")
 root.resizable(False, True)
 
 # Detect best fonts available on this machine
