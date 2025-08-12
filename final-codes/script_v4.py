@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import platform
 import threading
@@ -46,8 +47,12 @@ summary_var = None
 check_all_var = None   # tk.BooleanVar
 clear_display_var = None  # tk.BooleanVar
 
-# --- Credentials file ---
-CREDENTIALS_FILE = Path(__file__).resolve().parent / "credentials.txt"
+# --- Credentials file (baseline; real lookup happens in read_credentials) ---
+try:
+    _BASE_DIR = Path(__file__).resolve().parent
+except Exception:
+    _BASE_DIR = Path.cwd()
+CREDENTIALS_FILE = _BASE_DIR / "credentials.txt"
 
 # --- Your exact XPaths (added) ---
 XPATH_PREVIEWS_BTN_SPAN = "/html/body/main/section/div[2]/div[1]/div[2]/div[3]/div[1]/div/button/span"
@@ -99,46 +104,134 @@ def detect_fonts():
 # ------------------------------
 # Credentials loader
 # ------------------------------
-def read_credentials():
+def _candidate_credential_paths() -> list[Path]:
     """
-    Load username/password from credentials.txt if present.
-    Supported formats:
+    Assemble a prioritized list of paths to look for credentials.txt.
+    Works for source runs and frozen executables on Windows/macOS/Linux.
+    """
+    # Highest priority: explicit env var
+    env_path = os.environ.get("FT_CREDENTIALS_FILE")
+    if env_path:
+        return [Path(env_path)]
+
+    candidates = []
+
+    # If frozen (PyInstaller/py2app), look next to the executable
+    try:
+        if getattr(sys, "frozen", False):
+            exe_dir = Path(sys.executable).resolve().parent
+            candidates.append(exe_dir / "credentials.txt")
+            # macOS .app convenience: also check Contents/Resources
+            if sys.platform == "darwin":
+                try:
+                    candidates.append(exe_dir.parent / "Resources" / "credentials.txt")  # .../Contents/Resources
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Script directory (when running from source)
+    try:
+        candidates.append(Path(__file__).resolve().parent / "credentials.txt")
+    except Exception:
+        pass
+
+    # Baseline constant from top of file (kept for compatibility)
+    try:
+        candidates.append(Path(CREDENTIALS_FILE))
+    except Exception:
+        pass
+
+    # Current working directory
+    candidates.append(Path.cwd() / "credentials.txt")
+
+    # Home config dir
+    candidates.append(Path.home() / ".basefile-qa" / "credentials.txt")
+
+    # De-dup while preserving order
+    uniq = []
+    seen = set()
+    for p in candidates:
+        try:
+            rp = p.resolve()
+        except Exception:
+            rp = p
+        if rp not in seen:
+            seen.add(rp)
+            uniq.append(rp)
+    return uniq
+
+def _parse_credentials_file(path: Path) -> tuple[str, str]:
+    """
+    Parse a credentials file that can be either:
       - key=value lines (username=..., password=...)
       - or first non-empty line = username, second = password
-    Env vars FT_USERNAME/FT_PASSWORD are used as fallback/defaults.
+    Returns (username, password) with empty strings if not found.
     """
-    user = os.getenv("FT_USERNAME", "")
-    pwd = os.getenv("FT_PASSWORD", "")
+    user, pwd = "", ""
+    first, second = None, None
+    with path.open("r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or line.startswith("//"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+                k = k.strip().lower()
+                v = v.strip().strip('"').strip("'")
+                if k in ("username", "user", "email", "login"):
+                    user = v
+                elif k in ("password", "pass", "pwd"):
+                    pwd = v
+            else:
+                if first is None:
+                    first = line
+                elif second is None:
+                    second = line
+    if not user and first is not None:
+        user = first
+    if not pwd and second is not None:
+        pwd = second
+    return user, pwd
 
-    path = Path(os.environ.get("FT_CREDENTIALS_FILE", CREDENTIALS_FILE))
-    try:
-        if path.is_file():
-            first, second = None, None
-            with path.open("r", encoding="utf-8") as f:
-                for raw in f:
-                    line = raw.strip()
-                    if not line or line.startswith("#") or line.startswith("//"):
-                        continue
-                    if "=" in line:
-                        k, v = line.split("=", 1)
-                        k = k.strip().lower()
-                        v = v.strip().strip('"').strip("'")
-                        if k in ("username", "user", "email", "login"):
-                            user = v
-                        elif k in ("password", "pass", "pwd"):
-                            pwd = v
-                    else:
-                        if first is None:
-                            first = line
-                        elif second is None:
-                            second = line
-            if first is not None and user == "":
-                user = first
-            if second is not None and pwd == "":
-                pwd = second
-            log(f"🔐 Loaded credentials from {path}")
-    except Exception as e:
-        log(f"⚠️ Could not read credentials file: {e}")
+def read_credentials():
+    """
+    Load username/password from (in order):
+      1) FT_CREDENTIALS_FILE (exact path)
+      2) Next to the executable (when frozen) [+ macOS Resources]
+      3) Script directory
+      4) Baseline CREDENTIALS_FILE
+      5) Current working directory
+      6) ~/.basefile-qa/credentials.txt
+
+    Env vars FT_USERNAME / FT_PASSWORD override or fill any missing value.
+    """
+    env_user = os.getenv("FT_USERNAME", "")
+    env_pwd  = os.getenv("FT_PASSWORD", "")
+
+    tried = []
+    found_user, found_pwd = "", ""
+
+    for path in _candidate_credential_paths():
+        tried.append(str(path))
+        try:
+            if path.is_file():
+                u, p = _parse_credentials_file(path)
+                if u: found_user = u
+                if p: found_pwd  = p
+                log(f"🔐 Loaded credentials from {path}")
+                break
+        except Exception as e:
+            log(f"⚠️ Could not read credentials at {path}: {e}")
+
+    # Apply env overrides / fill-ins
+    user = env_user if env_user else found_user
+    pwd  = env_pwd  if env_pwd  else found_pwd
+
+    if not (found_user or found_pwd):
+        log("ℹ️ credentials.txt not found. Paths tried (in order):")
+        for i, p in enumerate(tried, 1):
+            log(f"   {i}. {p}")
 
     return user, pwd
 
@@ -435,6 +528,25 @@ def zoom_to(percent=80):
         log(f"🔍 Preview zoom set to ~{percent}%")
     except Exception as e:
         log(f"⚠️ Could not set zoom to {percent}%: {e}")
+
+def real_chrome_zoom_out():
+    """Zoom out aggressively for grid view (~25%)."""
+    try:
+        pyautogui.FAILSAFE = False
+        try:
+            driver.maximize_window()
+        except Exception:
+            pass
+        time.sleep(0.3)
+        for _ in range(8):  # ~25%
+            if platform.system() == "Darwin":
+                pyautogui.hotkey("command", "-")
+            else:
+                pyautogui.hotkey("ctrl", "-")
+            time.sleep(0.08)
+        log("🔍 Browser zoomed out for grid view (~25%)")
+    except Exception as e:
+        log(f"⚠️ Could not zoom out browser: {e}")
 
 # ---------- Helpers for grid/checkbox & Previews ----------
 def _scroll_into_view(el):
@@ -748,6 +860,9 @@ def selenium_login(username, password, url, skip_restart=False):
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".react-grid-Row"))
             )
 
+            # >>> Zoom out right after login so grid is easy to work with
+            real_chrome_zoom_out()
+
             # Load all rows/columns
             try:
                 scrollable_div = WebDriverWait(driver, 10).until(
@@ -935,15 +1050,20 @@ def selenium_login(username, password, url, skip_restart=False):
                     tc10_status = "SKIPPED"
                     tc11_status = "SKIPPED"
                     note = "Preview & ClickTag checks skipped for ZIP + (dynamic_preroll/html_onpage/preroll). Please verify manually."
+                    # ensure we don't leave any prior preview zoom hanging
+                    reset_zoom()
+
                 elif creative_lower.endswith(".mp3"):
                     tc10_status = "-"
                     tc11_status = "N/A"
+                    # make sure OS/browser zoom is back to 100% after TC9
+                    reset_zoom()
                 else:
                     # Default TC10/11 values
                     tc10_status = "-"
                     tc11_status = "-"
 
-                    # Select row, open preview, zoom to ~80%, run TC11 and optionally TC10, then restore 100%
+                    # Select row, open preview, zoom to ~80%, run TC11 and TC10, then restore 100%
                     clicked_row = _click_checkbox_in_row(row)
                     if clicked_row:
                         root_handle = driver.current_window_handle
@@ -997,6 +1117,7 @@ def selenium_login(username, password, url, skip_restart=False):
                                 log("☑️ Row unchecked.")
                             except Exception as ue:
                                 log(f"⚠️ Could not uncheck row: {ue}")
+                            # always restore OS zoom back to 100% after any preview attempt
                             reset_zoom()
 
                 # processed count (either all rows, or only QA rows)
