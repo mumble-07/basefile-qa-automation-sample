@@ -833,6 +833,45 @@ def _check_preview_console_errors():
         log(f"ℹ️ Console logs not available: {e}")
     return (len(errors) > 0), errors
 
+# ---------- Helpers used ONLY for TC7 (keyboard search + robust cell read) ----------
+def _row_by_creative_name(name: str):
+    """Find the row element by exact visible name/title after a keyboard search."""
+    try:
+        anchors = driver.find_elements(By.CSS_SELECTOR, "span.name-overflow a")
+        for a in anchors:
+            t = (a.text or "").strip()
+            ti = (a.get_attribute("title") or "").strip()
+            if t == name or ti == name:
+                return a.find_element(By.XPATH, "./ancestor::div[contains(@class,'react-grid-Row')]")
+    except Exception:
+        pass
+    return None
+
+def _get_full_text_from_cell(cell):
+    """Prefer @title (full text) when present; otherwise cell.text."""
+    try:
+        if cell is None:
+            return ""
+        title = (cell.get_attribute("title") or "").strip()
+        txt = (cell.text or "").strip()
+        return title if title and len(title) >= len(txt) else txt
+    except Exception:
+        return ""
+
+def _cmdf_search(text: str):
+    """Open browser find box, type text, close."""
+    try:
+        if platform.system() == "Darwin":
+            pyautogui.hotkey("command", "f")
+        else:
+            pyautogui.hotkey("ctrl", "f")
+        time.sleep(0.08)
+        pyautogui.typewrite(text)
+        time.sleep(0.25)
+        pyautogui.press("esc")
+    except Exception as e:
+        log(f"⚠️ Keyboard find failed: {e}")
+
 # ---------- Main Selenium Flow ----------
 def selenium_login(username, password, url, skip_restart=False):
     """Navigate, login, scan grid, run checks."""
@@ -860,7 +899,7 @@ def selenium_login(username, password, url, skip_restart=False):
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".react-grid-Row"))
             )
 
-            # >>> Zoom out right after login so grid is easy to work with
+            # >>> Zoom out ONCE so grid shows many columns (stay zoomed-out for all grid checks)
             real_chrome_zoom_out()
 
             # Load all rows/columns
@@ -917,8 +956,28 @@ def selenium_login(username, password, url, skip_restart=False):
         log(f"{'Creative Name':50} {'ID':10} {'Status':12} {'TC1':8} {'TC2':20} {'TC3':15} {'TC4':20} {'TC5':20} {'TC6':15} {'TC7':30} {'TC8':30} {'TC9':20} {'TC10':10} {'TC11':10}")
         log("-" * 290)
 
-        # Iterate
-        for idx, row in enumerate(rows):
+        # Iterate through all rows; auto-scroll the virtualized grid as needed
+        idx = 0
+        while True:
+            rows = driver.find_elements(By.CSS_SELECTOR, "div.react-grid-Row")
+            if idx >= len(rows):
+                # Try to nudge the virtualized list to load more rows
+                try:
+                    sc = driver.find_element(By.CSS_SELECTOR, "div.ReactVirtualized__Grid")
+                    driver.execute_script(
+                        "arguments[0].scrollTop = Math.min(arguments[0].scrollTop + (arguments[0].clientHeight*0.9), arguments[0].scrollHeight);",
+                        sc
+                    )
+                    time.sleep(0.35)
+                    rows = driver.find_elements(By.CSS_SELECTOR, "div.react-grid-Row")
+                    if idx >= len(rows):
+                        break
+                except Exception:
+                    break
+
+            row = rows[idx]
+            idx += 1
+
             try:
                 cells = row.find_elements(By.CSS_SELECTOR, ".react-grid-Cell")
 
@@ -1021,9 +1080,17 @@ def selenium_login(username, password, url, skip_restart=False):
 
                 test_case_6 = "PASSED" if placement_size.lower() == "1x1" else "N/A"
 
+                # --- TEST CASE #7 — keyboard search while zoomed-out, then read "File Name" from same row
                 try:
-                    file_name_col = cells[col_index_map["file name"]].text.strip() if "file name" in col_index_map else ""
-                    test_case_7 = "PASSED" if creative_name.lower() == file_name_col.lower() else "FAIL"
+                    file_name_col = ""
+                    if "file name" in col_index_map and creative_name and creative_name != "[Missing]":
+                        _cmdf_search(creative_name)         # bring row into view at current (zoomed-out) grid
+                        r2 = _row_by_creative_name(creative_name) or row
+                        cells2 = r2.find_elements(By.CSS_SELECTOR, ".react-grid-Cell")
+                        idx_file = col_index_map["file name"]
+                        file_cell = cells2[idx_file] if idx_file < len(cells2) else None
+                        file_name_col = _get_full_text_from_cell(file_cell)
+                    test_case_7 = "PASSED" if creative_name.strip().lower() == (file_name_col.strip().lower()) else "FAIL"
                 except Exception:
                     test_case_7 = "FAIL"
 
@@ -1050,20 +1117,17 @@ def selenium_login(username, password, url, skip_restart=False):
                     tc10_status = "SKIPPED"
                     tc11_status = "SKIPPED"
                     note = "Preview & ClickTag checks skipped for ZIP + (dynamic_preroll/html_onpage/preroll). Please verify manually."
-                    # ensure we don't leave any prior preview zoom hanging
-                    reset_zoom()
-
+                    # IMPORTANT: stay zoomed-out for grid; do NOT reset to 100 here
                 elif creative_lower.endswith(".mp3"):
                     tc10_status = "-"
                     tc11_status = "N/A"
-                    # make sure OS/browser zoom is back to 100% after TC9
-                    reset_zoom()
+                    # stay zoomed-out for grid
                 else:
                     # Default TC10/11 values
                     tc10_status = "-"
                     tc11_status = "-"
 
-                    # Select row, open preview, zoom to ~80%, run TC11 and TC10, then restore 100%
+                    # Select row, open preview, temporarily zoom-in, then restore grid zoom
                     clicked_row = _click_checkbox_in_row(row)
                     if clicked_row:
                         root_handle = driver.current_window_handle
@@ -1076,6 +1140,7 @@ def selenium_login(username, password, url, skip_restart=False):
                             except Exception:
                                 last_checked_url = creative_url or ""
 
+                            # TEMP: preview zoom-in
                             zoom_to(80)  # make the ad comfortably clickable/visible
 
                             # TC11: Console errors (always check)
@@ -1117,8 +1182,8 @@ def selenium_login(username, password, url, skip_restart=False):
                                 log("☑️ Row unchecked.")
                             except Exception as ue:
                                 log(f"⚠️ Could not uncheck row: {ue}")
-                            # always restore OS zoom back to 100% after any preview attempt
-                            reset_zoom()
+                            # Return to grid zoom (stay zoomed-out for rest of checks)
+                            real_chrome_zoom_out()
 
                 # processed count (either all rows, or only QA rows)
                 processed_count += 1
@@ -1139,9 +1204,10 @@ def selenium_login(username, password, url, skip_restart=False):
 
             except Exception as e:
                 log(f"{'[Missing]':100} {'[Missing]':15} {'[Error]':20} {'FAIL':15} {'Could not extract':25} {'FAIL':20} {'FAIL':20} {'FAIL':25} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'FAIL':30} {'-':10} {'-':10}")
-                log(f"⚠️ Row {idx+1} failed: {e}")
+                log(f"⚠️ Row {idx} failed: {e}")
 
-        # Done → close browser
+        # Done → return zoom to 100 once, then close browser
+        reset_zoom()
         log(f"🎉 Finished. {SUMMARY_PREFIX}{processed_count}/{expected_total}. Closing browser…")
         close_browser()
 
@@ -1200,7 +1266,7 @@ def submit():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("Basefile QA - East Coast")
-root.geometry("1200x720")
+root.geometry("1080x720")
 root.resizable(False, True)
 
 # Detect best fonts available on this machine
