@@ -1266,7 +1266,7 @@ def submit():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("Basefile QA - East Coast")
-root.geometry("1080x720")
+root.geometry("1200x720")
 root.resizable(False, True)
 
 # Detect best fonts available on this machine
